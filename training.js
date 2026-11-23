@@ -33,11 +33,11 @@ const EX = {
   pushdown: { n: 'Trizeps Pushdowns', g: 'Arme', step: 2.5 },
   crunch: { n: 'Ab-Crunch Maschine', g: 'Core', step: 5 },
   // Übungen aus dem Drive-Dokument (nur zur Auswahl, kein fester Plan)
-  spanish: { n: 'Spanish Squat Hold', g: 'Beine', noKg: true, sec: true },
-  trapbar: { n: 'Trap Bar Deadlift', g: 'Hüfte/Beinbeuger', step: 5 },
+  spanish: { n: 'Spanish Squat Hold', g: 'Beine', noKg: true, sec: true, how: 'Starkes Band an einem Rack auf Kniehöhe, Band direkt in die Kniekehlen. Zurücklehnen, Schienbeine senkrecht, ca. 60° Kniewinkel, Oberkörper aufrecht. Kniekehlen gegen das Band drücken und den Oberschenkel maximal anspannen. Leichtes Ziehen an der Sehne ist okay (max. 3 von 10), stechender Schmerz nicht. 60–90 s Pause.', vid: 'https://www.youtube.com/results?search_query=E3+Rehab+spanish+squat' },
+  trapbar: { n: 'Trap Bar Deadlift', g: 'Hüfte/Beinbeuger', step: 5, how: 'Mittig in die Trap Bar, Füße hüftbreit, hohe Griffe schonen Rücken und Knie. Brust raus, Rücken gerade, vor jeder Wdh. Spannung aufbauen. Explosiv hochdrücken, oben Gesäß anspannen, 2 s kontrolliert ablassen. 1–2 Wdh. im Tank. 2–3 min Pause.', vid: 'https://www.youtube.com/results?search_query=trap+bar+deadlift+technique' },
   defLunge: { n: 'Deficit Reverse Lunge (je Bein)', g: 'Beine', step: 2 },
-  copenhagen: { n: 'Copenhagen Plank (je Seite)', g: 'Adduktoren', noKg: true, sec: true },
-  wadenSitz: { n: 'Wadenheben sitzend', g: 'Waden', step: 5 },
+  copenhagen: { n: 'Copenhagen Plank (je Seite)', g: 'Adduktoren', noKg: true, sec: true, how: 'Seitlich auf dem Unterarm, Ellbogen unter der Schulter. Oberes Bein auf die Bank: zum Einstieg mit dem Knie, später mit dem Knöchel. Becken hochdrücken, Körper eine gerade Linie, nicht durchhängen oder kippen. Sekunden je Seite eintragen. Geht es noch nicht: Adduktoren-Maschine.', vid: 'https://www.youtube.com/results?search_query=E3+Rehab+copenhagen+plank' },
+  wadenSitz: { n: 'Wadenheben sitzend', g: 'Waden', step: 5, how: 'An der sitzenden Wadenmaschine: ganz tief in die Dehnung, unten 2 s halten, ohne Schwung hoch, oben kurz anspannen. Nicht federn, das belastet nur die Sehne. 1–2 im Tank, 60 s Pause.', vid: 'https://www.youtube.com/results?search_query=seated+calf+raise+soleus+technique' },
   wadenSteh: { n: 'Wadenheben stehend (Supersatz)', g: 'Waden', step: 5 },
   // weitere Auswahl
   bank: { n: 'Bankdrücken', g: 'Brust', step: 2.5 },
@@ -53,27 +53,30 @@ const EX = {
   trizeps: { n: 'Trizepsdrücken', g: 'Arme', step: 2.5 },
   kniebeuge: { n: 'Kniebeuge', g: 'Beine', step: 2.5 },
   presse: { n: 'Beinpresse', g: 'Beine', step: 5 },
-  split: { n: 'Bulgarian Split Squat', g: 'Beine', step: 2 },
+  split: { n: 'Bulgarian Split Squat (je Bein)', g: 'Beine', step: 2, how: 'Hinterer Fuß auf der Bank, vorderer Fuß so weit vorn, dass das Schienbein unten fast senkrecht steht. 3 s runter, unten kurz halten, kräftig über den ganzen Fuß hoch. Vorderes Knie zeigt zur 2.–3. Zehe, knickt nicht nach innen. Erst ein Bein, dann das andere, Wdh. je Bein eintragen. 1–2 im Tank, 90 s Pause.', vid: 'https://www.youtube.com/results?search_query=bulgarian+split+squat+technique' },
   ausfall: { n: 'Ausfallschritte', g: 'Beine', step: 2 },
   rdl: { n: 'Rumänisches Kreuzheben', g: 'Hüfte/Beinbeuger', step: 2.5 },
   beuger: { n: 'Beinbeuger', g: 'Hüfte/Beinbeuger', step: 2.5 },
   hipthrust: { n: 'Hip Thrust', g: 'Hüfte/Beinbeuger', step: 5 },
   adduktor: { n: 'Adduktoren', g: 'Hüfte/Beinbeuger', step: 5 },
   waden: { n: 'Wadenheben', g: 'Waden', step: 5 },
-  sprung: { n: 'Box Jumps / Sprünge', g: 'Explosiv', noKg: true },
+  sprung: { n: 'Box Jumps (optional)', g: 'Explosiv', noKg: true, how: 'Optional, ganz am Anfang. Ausgeruht und maximal explosiv hochspringen, weich und leise landen, oben aufrichten, runtersteigen (nicht springen). Kiste so hoch, dass du sicher landest. 60–90 s Pause, nie bis zur Ermüdung.', vid: 'https://www.youtube.com/results?search_query=box+jump+technique+landing' },
   core: { n: 'Core (Pallof / Anti-Rotation)', g: 'Core', step: 2.5 }
 };
 const GYM_TYPES = { ober: 'Oberkörper 1', ober2: 'Oberkörper 2', beine: 'Beine' };
 // Zielvorgaben: [Übung, Sätze, Wdh./Sek. von, bis]; RIR-Vorgabe je Tag
 const PLAN_RIR = { ober: 0, beine: 2 };
+const PLAN_NOTE = { beine: 'Nicht bis Versagen: 1–2 Wdh. im Tank. Mind. 48 h Abstand zu Punktspiel oder Turnier.' };
 const PLAN = {
+  beine: [['sprung', 3, 3, 3], ['spanish', 3, 30, 45], ['trapbar', 3, 4, 6], ['split', 3, 6, 8], ['wadenSitz', 3, 8, 12], ['copenhagen', 2, 20, 30]],
   ober: [['schulterKH', 2, 5, 7], ['latzieh', 2, 4, 6], ['brustpresse', 2, 4, 6], ['tbar', 2, 6, 8],
          ['seithebenKabel', 2, 6, 8], ['bizepsStuetze', 2, 6, 8], ['pushdown', 2, 6, 8], ['crunch', 2, 6, 8]]
 };
-const DEF_SEL = { ober: PLAN.ober.map(x => x[0]), ober2: [], beine: [] };
+const DEF_SEL = { ober: PLAN.ober.map(x => x[0]), ober2: [], beine: PLAN.beine.map(x => x[0]) };
 const target = ex => { for (const t in PLAN) { const f = PLAN[t].find(x => x[0] === ex); if (f) return { sets: f[1], lo: f[2], hi: f[3], rir: PLAN_RIR[t] }; } return null; };
-const PLAN_V = 4;
+const PLAN_V = 5;
 const U = E => E.sec ? ' s' : ' Wdh.';
+const rng = T => T.lo === T.hi ? `${T.lo}` : `${T.lo}–${T.hi}`;
 
 const gym = () => {
   const g = load('tf-gym', { sel: DEF_SEL, sessions: [] });
@@ -120,7 +123,9 @@ function logger(g, ex) {
     <div class="lbl2">${E.bw ? 'Zusatzgewicht' : 'Gewicht'}</div>
     <div class="step"><button data-ga="kg-" aria-label="weniger">−</button><b>${fmtKg(draft.kg)}<small> kg</small></b><button data-ga="kg+" aria-label="mehr">+</button></div>`;
   return `<div class="gym"><h3>${E.n}</h3>
-    ${T ? `<p class="mini"><b>Ziel: ${T.sets} × ${T.lo}–${T.hi}${U(E)}</b> ${T.rir ? 'kontrolliert, ca. 2 im Tank – nicht bis Versagen' : 'bis Versagen (0–1 im Tank)'}</p>` : ''}
+    ${T ? `<p class="mini"><b>Ziel: ${T.sets} × ${rng(T)}${U(E)}</b> ${T.rir ? 'kontrolliert, ca. 2 im Tank – nicht bis Versagen' : 'bis Versagen (0–1 im Tank)'}</p>` : ''}
+    ${E.how ? `<details class="how"><summary>So geht's</summary><p>${E.how}</p></details>` : ''}
+    ${E.vid ? `<a class="vid" href="${E.vid}" target="_blank" rel="noopener">▶ Video-Anleitung ansehen</a>` : ''}
     ${adv ? `<p class="why">${adv.up ? '⬆︎ ' : ''}${adv.msg}</p>` : ''}
     <p class="mini">${l ? `Letztes Mal: ${E.noKg ? '' : fmtKg(l.kg) + ' kg × '}${l.r}${U(E)} · RIR ${l.rir >= 4 ? '4+' : l.rir}` : 'Erster Eintrag für diese Übung'}</p>
     ${kgRow}
@@ -147,7 +152,7 @@ function selSheet(g, t) {
   return `<div class="gym"><h3>Übungen · ${GYM_TYPES[t]}</h3>
     <div class="seg2">${Object.entries(GYM_TYPES).map(([k, v]) => chip('data-gseltab', k, v, k === t)).join('')}</div>
     <div class="chips">${ids.map(id => chip('data-gsel', id, EX[id].n, (g.sel[t] || []).includes(id))).join('')}</div>
-    <p class="mini">Oberkörper 1 ist dein Dienstags-Plan. Beine und Oberkörper 2 trage ich ein, sobald sie feststehen.</p>
+    <p class="mini">Oberkörper 1 (Di) und Beine sind deine Pläne. Oberkörper 2 entwickeln wir noch.</p>
     <button class="cta" data-ga="close">Fertig</button></div>`;
 }
 let selTab = 'ober';
@@ -173,11 +178,11 @@ function renderGym() {
   if (ses) {
     const ids = g.sel[ses.t] || [];
     const extra = [...new Set(ses.sets.map(x => x.ex))].filter(x => !ids.includes(x));
-    h += `<div class="panel now"><div class="now-l">Einheit läuft · seit ${hm(ses.start)}</div><div class="now-t">${GYM_TYPES[ses.t]}</div>
+    h += `<div class="panel now"><div class="now-l">Einheit läuft · seit ${hm(ses.start)}</div><div class="now-t">${GYM_TYPES[ses.t]}</div>${PLAN_NOTE[ses.t] ? `<p class="mini">${PLAN_NOTE[ses.t]}</p>` : ''}
       ${[...ids, ...extra].map(id => {
         const s = ses.sets.filter(x => x.ex === id), E = EX[id];
         const T = target(id);
-        const sum = s.length ? `${s.length}${T ? '/' + T.sets : ''} ${s.length === 1 && !T ? 'Satz' : 'Sätze'} · ${E.noKg ? '' : fmtKg(s[s.length - 1].kg) + ' kg × '}${s[s.length - 1].r}` : (T ? `${T.sets} × ${T.lo}–${T.hi}${U(E)}` : 'noch offen');
+        const sum = s.length ? `${s.length}${T ? '/' + T.sets : ''} ${s.length === 1 && !T ? 'Satz' : 'Sätze'} · ${E.noKg ? '' : fmtKg(s[s.length - 1].kg) + ' kg × '}${s[s.length - 1].r}` : (T ? `${T.sets} × ${rng(T)}${U(E)}` : 'noch offen');
         return `<button class="supp${s.length ? ' on' : ''}" data-gex="${id}"><i></i><span><b>${E.n}</b><small>${sum}</small></span></button>`;
       }).join('')}
       ${ids.length ? '' : '<p class="mini">Für diesen Tag ist noch kein Plan hinterlegt – unten bei „Übungen anpassen“ auswählen.</p>'}
