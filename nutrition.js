@@ -43,7 +43,10 @@ const FOOD = {
   datteln: { n: 'Datteln', m: [280, 2, 63, 0.4] },
   griess: { n: 'Grießbrei / Reispudding', m: [105, 3.5, 17, 2.5] },
   mandeln: { n: 'Mandeln / Nüsse', m: [600, 21, 7, 52] },
-  kaese: { n: 'Käse', m: [360, 24, 0, 29], u: 25, un: ['Scheibe Käse', 'Scheiben Käse'] }
+  kaese: { n: 'Käse', m: [360, 24, 0, 29], u: 25, un: ['Scheibe Käse', 'Scheiben Käse'] },
+  muesli: { n: 'Müsli (ungezuckert)', m: [360, 10, 60, 6] },
+  milch: { n: 'Milch 1,5 %', m: [47, 3.4, 4.8, 1.5] },
+  fruechte: { n: 'Obst (z. B. Banane, Apfel, Beeren, Kiwi)', m: [60, 0.8, 13, 0.3] }
 };
 
 // ---------- Tagesarten aus dem Plan ----------
@@ -230,13 +233,28 @@ function compose(slot, day, ch) {
       if (p !== 'lachs' && !slot.noFat) items.push({ f: 'oel', g: 5 });
       return items;
     }
-    case 'zw': return [{ f: 'apfel', n: 1 }];
-    case 'sn':
-      if (slot.snack === 'bh') return [{ f: 'banane', n: 1 }, { f: 'honig', g: 15 }];
+    case 'zw': {
+      const v = ch.zw_v || 'apfel';
+      if (v === 'banane') return [{ f: 'banane', n: 1 }];
+      if (v === 'skyr') return [{ f: 'skyrA', g: 200 }, { f: 'beeren', g: 100 }];
+      if (v === 'shake') return [{ f: 'whey', g: 30 }, { f: 'milch', g: 250 }];
+      if (v === 'muesli') return [{ f: 'skyrA', g: 150 }, { f: 'muesli', g: 40 }];
+      return [{ f: 'apfel', n: 1 }];
+    }
+    case 'sn': {
+      const v = ch.sn_v || (slot.snack === 'bh' ? 'bh' : 'mw');
+      if (v === 'bh') return [{ f: 'banane', n: 1 }, { f: 'honig', g: 15 }];
+      if (v === 'toast') return [{ f: 'toast', n: 3, sc: { min: 2, max: 4, step: 1 } }, { f: 'honig', g: 20 }, { f: 'banane', n: 1 }];
+      if (v === 'datteln') return [{ f: 'datteln', g: 50, sc: { min: 30, max: 80, step: 10 } }, { f: 'banane', n: 1 }];
+      if (v === 'fruechte') return [{ f: 'fruechte', g: 250, sc: { min: 150, max: 400, step: 50 } }];
       return [{ f: 'maiswaffel', n: 5, sc: { min: 3, max: 7, step: 1 } }, { f: 'honig', g: 20 }, { f: 'banane', n: 1 }];
+    }
     case 'wa': return (ch[slot.id] || 'mw') === 'da' ? [{ f: 'datteln', g: 40 }] : [{ f: 'maiswaffel', n: 3 }, { f: 'banane', n: 1 }];
     case 'rad': return (ch.rad || 'da') === 'gr' ? [{ f: 'griess', g: 100 }] : [{ f: 'datteln', g: 50 }];
     case 'ab': {
+      if (slot.variant === 'muesli') return [{ f: 'skyrA', g: 250 }, { f: 'muesli', g: 60, sc: { min: 30, max: 100, step: 10 } }, { f: 'beeren', g: 100 }];
+      if (slot.variant === 'fruechte') return [{ f: 'skyrA', g: 300 }, { f: 'fruechte', g: 250, sc: { min: 150, max: 400, step: 50 } }];
+      if (slot.variant === 'shake') return [{ f: 'whey', g: 40 }, { f: 'milch', g: 300, sc: { min: 200, max: 500, step: 100 } }, { f: 'banane', n: 1, sc: { min: 1, max: 2, step: 1 } }, { f: 'hafer', g: 40, sc: { min: 20, max: 80, step: 20 } }];
       if (slot.variant === 'eier') return [{ f: 'ei', n: 3, sc: { min: 3, max: 4, step: 1 }, fatScale: true }, { f: 'vollkorn', n: 2, sc: { min: 2, max: 4, step: 1 } }, { f: 'rohkost', g: 100 }];
       const p = ch.ab_p || 'quark', c = ch.ab_c || 'toast';
       const items = [p === 'frischkaese' ? { f: 'frischkaese', g: 200 } : { f: p, g: 250 }];
@@ -247,15 +265,29 @@ function compose(slot, day, ch) {
   }
   return [];
 }
+// Abendessen / leichte Mahlzeit: Variante wählbar (Eier nur, wo Fett erlaubt ist)
+const AB_VARS = [['eier', 'Eier + Brot'], ['quark', 'Quark/Skyr + Brot'], ['muesli', 'Skyr + Müsli'], ['fruechte', 'Skyr + Obst'], ['shake', 'Protein-Shake']];
+function applyAbVariant(x, ch) {
+  const v = ch.ab_v;
+  if (!v) return;
+  if (v === 'eier' && (x.light || x.noFat)) return;
+  x.variant = v;
+}
 function optionsFor(slot, ch) {
   if (slot.kind === 'mi') return [
     { key: 'mi_c', label: 'Kohlenhydrate', val: ch.mi_c || 'reis', opts: [['reis', 'Reis'], ['nudeln', 'Nudeln']] },
     { key: 'mi_p', label: 'Protein', val: ch.mi_p || 'haehnchen', opts: [['haehnchen', 'Hähnchen'], ['hack', 'Rinderhack'], ...(slot.noFat ? [] : [['lachs', 'Lachs']])] }
   ];
-  if (slot.kind === 'ab' && slot.variant !== 'eier') return [
-    { key: 'ab_p', label: 'Protein', val: ch.ab_p || 'quark', opts: [['quark', 'Magerquark'], ['skyrA', 'Skyr'], ['frischkaese', 'Körniger Frischkäse']] },
-    { key: 'ab_c', label: 'Beilage', val: ch.ab_c || 'toast', opts: [['toast', 'Toast'], ['mehrkorn', 'Mehrkornbrot'], ['reiswaffel', 'Reiswaffeln']] }
-  ];
+  if (slot.kind === 'zw') return [{ key: 'zw_v', label: 'Was gibt es?', val: ch.zw_v || 'apfel', opts: [['apfel', 'Apfel'], ['banane', 'Banane'], ['skyr', 'Skyr + Beeren'], ['muesli', 'Skyr + Müsli'], ['shake', 'Protein-Shake']] }];
+  if (slot.kind === 'sn') return [{ key: 'sn_v', label: 'Was gibt es?', val: ch.sn_v || (slot.snack === 'bh' ? 'bh' : 'mw'), opts: [['mw', 'Maiswaffeln + Honig + Banane'], ['toast', 'Toast + Honig + Banane'], ['datteln', 'Datteln + Banane'], ['bh', 'Banane + Honig'], ['fruechte', 'Obst']] }];
+  if (slot.kind === 'ab') {
+    const vars = AB_VARS.filter(([v]) => v !== 'eier' || !(slot.light || slot.noFat));
+    const rows = [{ key: 'ab_v', label: 'Variante', val: slot.variant, opts: vars }];
+    if (slot.variant === 'quark') rows.push(
+      { key: 'ab_p', label: 'Protein', val: ch.ab_p || 'quark', opts: [['quark', 'Magerquark'], ['skyrA', 'Skyr'], ['frischkaese', 'Körniger Frischkäse']] },
+      { key: 'ab_c', label: 'Beilage', val: ch.ab_c || 'toast', opts: [['toast', 'Toast'], ['mehrkorn', 'Mehrkornbrot'], ['reiswaffel', 'Reiswaffeln']] });
+    return rows;
+  }
   if (slot.kind === 'wa') return [{ key: slot.id, label: 'Snack', val: ch[slot.id] || 'mw', opts: [['mw', 'Maiswaffeln + Banane'], ['da', 'Datteln']] }];
   if (slot.kind === 'rad') return [{ key: 'rad', label: 'Snack', val: ch.rad || 'da', opts: [['da', 'Datteln'], ['gr', 'Grießbrei']] }];
   return [];
@@ -270,7 +302,7 @@ function plan(st, now) {
   Object.values(st.log).forEach(l => { if (l.m && l.st !== 'notyet') eaten = add(eaten, l.m, l.st === 'half' ? 0.5 : l.st === 'skip' ? 0 : 1); });
   (st.extra || []).forEach(x => { eaten = add(eaten, x.m, 1); });
   const rem = day.slots.filter(x => !st.log[x.id] || st.log[x.id].st === 'notyet');
-  rem.forEach(x => { x.items = compose(x, day, st.choice); x.te = Math.max(x.t, now); });
+  rem.forEach(x => { if (x.kind === 'ab') applyAbVariant(x, st.choice); x.items = compose(x, day, st.choice); x.te = Math.max(x.t, now); });
   rem.forEach(x => { if (x.mergedDinner && (tpl.P - total0(eaten, rem)[1]) > 25) x.items.push({ f: 'quark', g: 250, fill: 'p' }); });
   const total = () => rem.reduce((s, x) => add(s, sumItems(x.items)), eaten);
   function total0(e0, r) { return r.reduce((s, x) => add(s, sumItems(x.items)), e0); }
@@ -424,6 +456,12 @@ function sources(st) {
   const agg = {};
   const put = (name, m) => { const k = name.replace(/\s*\(.*?\)/g, ''); agg[k] = add(agg[k] || [0, 0, 0, 0], m); };
   Object.values(st.log).forEach(l => {
+    if (l.custom && l.st === 'eaten') {
+      const x = l.custom;
+      if (x.kind === 'list' && x.items) x.items.forEach(i => { const it = SN[i.id]; if (it) put(it.n, snM(it, i.q)); });
+      else put(x.txt ? x.txt + ' (grob)' : 'Mahlzeit (grob)', x.m);
+      return;
+    }
     if (!l.items || l.st === 'notyet' || l.st === 'skip') return;
     const k = l.st === 'half' ? 0.5 : 1;
     l.items.forEach(it => { if (!FOOD[it.f] || FOOD[it.f].free) return; put(FOOD[it.f].n, mac(it).map(v => v * k)); });
@@ -468,7 +506,7 @@ const mLine = m => `${Math.round(m[0])} kcal · ${Math.round(m[1])} g P · ${Mat
 
 function snackSheet() {
   const ids = Object.keys(snd.sel);
-  let h = `<h3>Snack eintragen</h3>
+  let h = `<h3>${snd.meal ? 'Was hast du stattdessen gegessen?' : 'Snack eintragen'}</h3>
     <div class="chips">${SNACKS.map(x => `<button class="chip${snd.sel[x.id] != null ? ' on' : ''}" data-act="snpick" data-v="${x.id}">${esc(x.n)}</button>`).join('')}</div>`;
   if (ids.length) {
     h += `<div class="snrows">${ids.map(id => {
@@ -481,10 +519,9 @@ function snackSheet() {
     <div class="macro" id="snSum">Zusammen: ${mLine(snTotal())}</div>`;
   }
   h += `<button class="cta" data-act="snsave"${ids.length ? '' : ' disabled'}>Eintragen</button>`;
-  if (!snd.other) h += `<button class="undo" data-act="snother" style="display:block;margin:8px auto 0">Nicht dabei? Anderes notieren</button>`;
-  else h += `<div class="panel" style="margin-top:14px"><div class="lbl2">Was war's? (kommt danach auf die Liste)</div>
+  h += `<div class="panel" style="margin-top:14px"><div class="lbl2">Oder frei eintragen (kommt danach auf die Liste)</div>
     <input id="snTxt" class="txtin" type="text" placeholder="z. B. Croissant vom Bäcker" value="${esc(snd.txt || '')}" autocomplete="off" enterkeyhint="done">
-    <div class="lbl2">Ungefähr</div><div class="chips">${SN_SIZE.map(([k, l]) => `<button class="chip${snd.kcal === k ? ' on' : ''}" data-act="snsz" data-v="${k}">${l} ~${k} kcal</button>`).join('')}</div>
+    <div class="lbl2">Ungefähr</div><div class="chips">${(snd.meal ? [[300, 'Klein'], [600, 'Mittel'], [900, 'Groß'], [1200, 'Sehr groß']] : SN_SIZE).map(([k, l]) => `<button class="chip${snd.kcal === k ? ' on' : ''}" data-act="snsz" data-v="${k}">${l} ~${k} kcal</button>`).join('')}</div>
     <div class="lbl2">Eher …</div><div class="chips">${Object.entries(SN_KIND).map(([k, [l]]) => `<button class="chip${snd.kind === k ? ' on' : ''}" data-act="snk" data-v="${k}">${l}</button>`).join('')}</div>
     <button class="ghost" data-act="snsaveother"${snd.kcal ? '' : ' disabled'} style="width:100%">Grob eintragen</button></div>`;
   return h;
@@ -531,6 +568,7 @@ function render() {
       <div class="ask-b"><button class="chip big" data-act="log" data-id="${overdue.id}" data-st="eaten">Ja, wie geplant</button>
       <button class="chip big" data-act="log" data-id="${overdue.id}" data-st="half">Nur die Hälfte</button>
       <button class="chip big" data-act="notyet" data-id="${overdue.id}">Noch nicht – Tag anpassen</button>
+      <button class="chip big" data-act="other" data-id="${overdue.id}">Etwas anderes gegessen</button>
       <button class="chip big" data-act="log" data-id="${overdue.id}" data-st="skip">Fällt aus</button></div></div>`;
   }
 
@@ -565,6 +603,7 @@ function render() {
       ${why.length ? `<p class="mini why">${why.join(' ')}</p>` : ''}
       <button class="cta" data-act="log" data-id="${cur.id}" data-st="eaten">Gegessen</button>
       <div class="row2"><button class="ghost" data-act="log" data-id="${cur.id}" data-st="half">Nur die Hälfte</button><button class="ghost" data-act="log" data-id="${cur.id}" data-st="skip">Fällt aus</button></div>
+      <button class="undo" data-act="other" data-id="${cur.id}" style="display:block;margin:10px auto 0">Etwas anderes gegessen</button>
     </div>`;
   }
 
@@ -604,6 +643,7 @@ function click(e) {
   if (!b) return false;
   const st = dayState(), act = b.dataset.act, now = nowMin();
   const ti = document.getElementById('snTxt'); if (snd && ti) snd.txt = ti.value;
+  if (act === 'other') { snd = { sel: {}, txt: '', kcal: null, kind: 'herzhaft', meal: b.dataset.id }; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
   if (act === 'snack') { snd = { sel: {}, other: false, txt: '', kcal: null, kind: 'herzhaft' }; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
   if (act === 'snpick') { const id = b.dataset.v; if (snd.sel[id] != null) delete snd.sel[id]; else snd.sel[id] = SN[id].def; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
   if (act === 'snminus' || act === 'snplus') { const it = SN[b.dataset.v]; const q = snd.sel[b.dataset.v] || 0; snd.sel[b.dataset.v] = Math.max(0, Math.round((q + (act === 'snplus' ? it.step : -it.step)) * 10) / 10); Shell.sheet(snackSheet()); Shell.buzz(); return true; }
@@ -614,12 +654,17 @@ function click(e) {
     const items = Object.entries(snd.sel).filter(([, q]) => q > 0).map(([id, q]) => ({ id, q }));
     if (!items.length) return true;
     const m = items.reduce((a, x) => add(a, snM(SN[x.id], x.q), 1), [0, 0, 0, 0]);
-    st.extra = st.extra || []; st.extra.push({ at: now, kind: 'list', items, txt: items.map(x => `${snQty(SN[x.id], x.q)} ${SN[x.id].n}`).join(', '), kcal: Math.round(m[0]), m });
-    store(st); snd = null; Shell.closeSheet(); Shell.toast('Snack eingetragen'); Shell.buzz(); Shell.refresh(); return true;
+    const entry = { at: now, kind: 'list', items, txt: items.map(x => `${snQty(SN[x.id], x.q)} ${SN[x.id].n}`).join(', '), kcal: Math.round(m[0]), m };
+    if (snd.meal) st.log[snd.meal] = { st: 'eaten', at: now, m, items: [], custom: entry };
+    else { st.extra = st.extra || []; st.extra.push(entry); }
+    const wasMeal = !!snd.meal;
+    store(st); snd = null; Shell.closeSheet(); Shell.toast(wasMeal ? 'Mahlzeit eingetragen' : 'Snack eingetragen'); Shell.buzz(); Shell.refresh(); return true;
   }
   if (act === 'snsaveother') {
     if (!snd || !snd.kcal) return true;
-    st.extra = st.extra || []; st.extra.push({ at: now, txt: (snd.txt || '').trim().slice(0, 80), kcal: snd.kcal, kind: snd.kind, m: snMacros(snd.kcal, snd.kind), todo: true });
+    const entry = { at: now, txt: (snd.txt || '').trim().slice(0, 80), kcal: snd.kcal, kind: snd.kind, m: snMacros(snd.kcal, snd.kind), todo: true };
+    if (snd.meal) st.log[snd.meal] = { st: 'eaten', at: now, m: entry.m, items: [], custom: entry };
+    else { st.extra = st.extra || []; st.extra.push(entry); }
     store(st); snd = null; Shell.closeSheet(); Shell.toast('Notiert – kommt auf die Liste'); Shell.buzz(); Shell.refresh(); return true;
   }
   if (act === 'snundo') { (st.extra || []).splice(+b.dataset.i, 1); store(st); Shell.buzz(); Shell.refresh(); return true; }

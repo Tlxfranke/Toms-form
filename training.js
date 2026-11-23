@@ -345,6 +345,8 @@ function rateSheet() {
       <div class="chips">${['frisch', 'okay', 'schwer', 'leer'].map((v, i) => chip('data-rl', i, v, rd.legs === i)).join('')}</div>` : ''}
     <div class="lbl2">Zwickt oder schmerzt etwas?</div>
     <div class="chips">${chip('data-rp', 'none', 'Nichts', rd.pain && !rd.pain.length)}${Object.entries(PAIN).map(([k, v]) => chip('data-rp', k, v, (rd.pain || []).includes(k))).join('')}</div>
+    <div class="lbl2">Notiz (optional) – wie lief's, was war besonders?</div>
+    <textarea id="rdNote" class="txtin note" rows="3" placeholder="z. B. viel Einzel gegen stärkere Gegner, am Ende müde Beine, Schulter leicht gezwickt">${(rd.note || '').replace(/</g, '&lt;')}</textarea>
     <button class="cta" data-ra="rsave"${rd.rpe ? '' : ' disabled'}>Speichern</button></div>`;
 }
 
@@ -395,7 +397,7 @@ function renderRec() {
       <div><b>${ratio != null && haveDays >= 10 ? ratio.toFixed(2).replace('.', ',') : '–'}</b><small>Woche ÷ Ø 4 Wochen</small></div></div>
     <div class="bars7">${days7.map(d => `<div><i style="height:${Math.max(3, loadOf(r, d) / max * 100)}%"></i><small>${new Date(d + 'T12:00').toLocaleDateString('de-DE', { weekday: 'short' }).slice(0, 2)}</small></div>`).join('')}</div>
     <p class="mini">Belastung = Minuten × Anstrengung (1–10). Das Verhältnis wird nach ca. 2 Wochen Daten aussagekräftig.</p>
-    ${(day.sess || []).map(s => `<div class="tl"><div class="tl-t">${hm(s.at)}</div><div class="tl-b">${TYPES[s.type] || s.type}${s.kind ? ' · ' + KIND[s.kind] : ''}<small>${s.dur} min · RPE ${s.rpe}${s.fmt ? ' · ' + FMT[s.fmt] : ''}${s.pain && s.pain.length ? ' · ⚠︎ ' + s.pain.map(k => PAIN[k]).join(', ') : ''}</small></div></div>`).join('')}
+    ${(day.sess || []).map(s => `<div class="tl"><div class="tl-t">${hm(s.at)}</div><div class="tl-b">${TYPES[s.type] || s.type}${s.kind ? ' · ' + KIND[s.kind] : ''}<small>${s.dur} min · RPE ${s.rpe}${s.fmt ? ' · ' + FMT[s.fmt] : ''}${s.pain && s.pain.length ? ' · ⚠︎ ' + s.pain.map(k => PAIN[k]).join(', ') : ''}${s.note ? '<br>„' + s.note.replace(/</g, '&lt;') + '“' : ''}</small></div></div>`).join('')}
     <button class="ghost" data-ra="manual" style="width:100%">Einheit nachtragen</button></div>`;
 
   // 4) Rohwerte von Uhr & Gurt stehen in der Datenzentrale
@@ -409,6 +411,7 @@ function clickRec(e) {
   const b = e.target.closest('[data-ra],[data-rate],[data-rt],[data-rk],[data-rf],[data-rm],[data-rd],[data-rr],[data-rl],[data-rp],[data-rw],[data-rwp]');
   if (!b) return false;
   const r = rec(), a = b.dataset.ra, ds = b.dataset;
+  const nt = document.getElementById('rdNote'); if (rd && nt) rd.note = nt.value;
   const re = () => { Shell.sheet(rateSheet()); Shell.buzz(); return true; };
   if (ds.rate) {
     const s = pending(r).find(x => x.ref === ds.rate); if (!s) return false;
@@ -430,7 +433,7 @@ function clickRec(e) {
   }
   if (a === 'rsave' && rd && rd.rpe) {
     const { fixed, start, end, ...s } = rd;
-    addRecSession({ ...s, ref: rd.ref || ('man-' + Date.now()), pain: rd.pain || [] });
+    addRecSession({ ...s, note: (rd.note || '').trim().slice(0, 500), ref: rd.ref || ('man-' + Date.now()), pain: rd.pain || [] });
     rd = null; Shell.closeSheet(); Shell.toast('Gespeichert – danke!');
   }
   else if (ds.rw) {
