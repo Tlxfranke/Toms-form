@@ -32,7 +32,7 @@ const EX = {
   bizepsStuetze: { n: 'Bizepscurls mit Armstütze', g: 'Arme', step: 1 },
   pushdown: { n: 'Trizeps Pushdowns', g: 'Arme', step: 2.5 },
   crunch: { n: 'Ab-Crunch Maschine', g: 'Core', step: 5 },
-  // Toms Beintraining (Donnerstag) – Badminton-orientiert, nicht bis Versagen
+  // Übungen aus dem Drive-Dokument (nur zur Auswahl, kein fester Plan)
   spanish: { n: 'Spanish Squat Hold', g: 'Beine', noKg: true, sec: true },
   trapbar: { n: 'Trap Bar Deadlift', g: 'Hüfte/Beinbeuger', step: 5 },
   defLunge: { n: 'Deficit Reverse Lunge (je Bein)', g: 'Beine', step: 2 },
@@ -67,13 +67,12 @@ const GYM_TYPES = { ober: 'Oberkörper 1', ober2: 'Oberkörper 2', beine: 'Beine
 // Zielvorgaben: [Übung, Sätze, Wdh./Sek. von, bis]; RIR-Vorgabe je Tag
 const PLAN_RIR = { ober: 0, beine: 2 };
 const PLAN = {
-  beine: [['spanish', 3, 35, 45], ['trapbar', 3, 5, 6], ['defLunge', 3, 6, 8], ['copenhagen', 2, 20, 30], ['wadenSitz', 2, 10, 12], ['wadenSteh', 2, 10, 12]],
   ober: [['schulterKH', 2, 5, 7], ['latzieh', 2, 4, 6], ['brustpresse', 2, 4, 6], ['tbar', 2, 6, 8],
          ['seithebenKabel', 2, 6, 8], ['bizepsStuetze', 2, 6, 8], ['pushdown', 2, 6, 8], ['crunch', 2, 6, 8]]
 };
-const DEF_SEL = { ober: PLAN.ober.map(x => x[0]), ober2: [], beine: PLAN.beine.map(x => x[0]) };
+const DEF_SEL = { ober: PLAN.ober.map(x => x[0]), ober2: [], beine: [] };
 const target = ex => { for (const t in PLAN) { const f = PLAN[t].find(x => x[0] === ex); if (f) return { sets: f[1], lo: f[2], hi: f[3], rir: PLAN_RIR[t] }; } return null; };
-const PLAN_V = 3;
+const PLAN_V = 4;
 const U = E => E.sec ? ' s' : ' Wdh.';
 
 const gym = () => {
@@ -148,7 +147,7 @@ function selSheet(g, t) {
   return `<div class="gym"><h3>Übungen · ${GYM_TYPES[t]}</h3>
     <div class="seg2">${Object.entries(GYM_TYPES).map(([k, v]) => chip('data-gseltab', k, v, k === t)).join('')}</div>
     <div class="chips">${ids.map(id => chip('data-gsel', id, EX[id].n, (g.sel[t] || []).includes(id))).join('')}</div>
-    <p class="mini">Oberkörper 1 (Di) und Beine (Do) kommen aus deinen Plänen. Oberkörper 2 entwickeln wir noch.</p>
+    <p class="mini">Oberkörper 1 ist dein Dienstags-Plan. Beine und Oberkörper 2 trage ich ein, sobald sie feststehen.</p>
     <button class="cta" data-ga="close">Fertig</button></div>`;
 }
 let selTab = 'ober';
