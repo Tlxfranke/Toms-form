@@ -488,10 +488,12 @@ function renderData() {
   // Verbrauch
   h += `<div class="panel"><h3>Verbrauch</h3>
     <p class="mini">Hier steht nach 2–3 Wochen dein echter Tagesverbrauch – errechnet aus dem, was du gegessen hast, und deinem Gewichtstrend. Danach passe ich die kcal im Ernährungsplan an (kleines Defizit, an Badminton-Tagen volle Energie).</p></div>`;
+  if (window.Sync) h += Sync.panel();
   return h;
 }
 
 function clickData(e) {
+  if (window.Sync && e.target.closest('[data-sync]')) { Sync.click(e); return true; }
   const btn = e.target.closest('[data-da]');
   if (!btn) return false;
   const v = btn.dataset.da;
