@@ -1,8 +1,8 @@
 // Offline-Unterstützung: Seite zuerst frisch aus dem Netz (damit Updates sofort ankommen),
 // ohne Netz aus dem Zwischenspeicher. Bei jeder Änderung VERSION hochzählen.
-const VERSION = 'v1';
+const VERSION = 'v3';
 const CACHE = 'toms-form-' + VERSION;
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/apple-touch-icon.png', './icons/icon-192.png'];
+const SHELL = ['./', './index.html', './nutrition.js', './manifest.webmanifest', './icons/apple-touch-icon.png', './icons/icon-192.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

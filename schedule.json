@@ -1,0 +1,12 @@
+{
+  "updated": "2026-11-23T09:50:00+01:00",
+  "source": "Google Kalender",
+  "days": {
+    "2026-11-28": [
+      { "type": "turnier", "title": "Badminton BM Nord 1 – Herrendoppel", "start": "14:00", "end": "20:00" }
+    ],
+    "2026-11-29": [
+      { "type": "turnier", "title": "Badminton BM Nord 1 – Herreneinzel", "start": "09:30", "end": "17:00" }
+    ]
+  }
+}
