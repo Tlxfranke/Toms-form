@@ -411,23 +411,62 @@ function itemsHtml(items) {
   return `<ul class="ing">${items.filter(it => !FOOD[it.f].free || true).map(it => `<li class="${it.fill ? 'fill' : ''}"><span>${label(it)}</span>${it.fill ? `<em>${it.fill === 'p' ? 'statt Abendbrot' : 'Auffüller'}</em>` : ''}</li>`).join('')}</ul>`;
 }
 
-// ---------- Extra gegessen (+ Snack, Freitext) ----------
-// Grobe Schätzung über Größe und Art; Claude kann den Freitext später genauer auswerten.
-const SN_SIZE = [[150, 'Klein', 'z. B. Riegel, Obst'], [300, 'Mittel', 'z. B. Brötchen, Eis'], [500, 'Groß', 'z. B. Döner-Hälfte, Kuchen'], [800, 'Mahlzeit', 'z. B. Mensa, Pizza']];
+// ---------- Snacks: feste Liste (Werte pro 100 g von den Packungen), wird nach und nach länger ----------
+// m = [kcal, Protein, KH, Fett] pro 100 g · unit 'stk' (mit Gramm pro Stück) oder 'g' · def = Startmenge · step = Regler-Schritt
+const SNACKS = [
+  { id: 'ei', n: 'Eier (Größe M)', m: [143, 12.6, 0.7, 9.5], unit: 'stk', g: 58, def: 2, step: 1, src: 'Durchschnitt Hühnerei' },
+  { id: 'haehnchenAuf', n: 'Hähnchenbrust-Aufschnitt', m: [101, 20, 1, 1.9], unit: 'g', def: 50, step: 10, src: 'Herta Finesse' },
+  { id: 'mozzarella', n: 'Mozzarella', m: [247, 18, 1, 19], unit: 'g', def: 125, step: 25, src: 'Cucina Nobile (Aldi), 1 Kugel = 125 g' },
+  { id: 'mozzarellaLight', n: 'Mozzarella light', m: [167, 20, 1.6, 9], unit: 'g', def: 125, step: 25, src: 'Galbani light, 1 Kugel = 125 g' },
+  { id: 'parmesan', n: 'Parmesan', m: [402, 32, 0, 30], unit: 'g', def: 20, step: 5, src: 'Parmigiano Reggiano' },
+  { id: 'geramontSkyr', n: 'Géramont mit Skyr', m: [215, 20, 0.5, 15], unit: 'g', def: 30, step: 10, src: 'Géramont, Packung 180 g' },
+  { id: 'chipsAldi', n: 'Protein Chips Aldi Sports', m: [401, 41, 28, 11], unit: 'g', def: 60, step: 10, src: 'Aldi Sports, 1 Tüte = 60 g' },
+  { id: 'chipsMore', n: 'More Protein Tortilla Chips', m: [408, 29, 43, 11], unit: 'g', def: 50, step: 10, src: 'More Nutrition, 1 Tüte = 50 g' }
+];
+const SN = Object.fromEntries(SNACKS.map(x => [x.id, x]));
+const snGrams = (it, q) => it.unit === 'stk' ? q * it.g : q;
+const snM = (it, q) => it.m.map(v => v * snGrams(it, q) / 100);
+const snQty = (it, q) => it.unit === 'stk' ? `${q} ${q === 1 ? 'Stück' : 'Stück'}` : `${Math.round(q)} g`;
+// Fallback, wenn etwas nicht auf der Liste steht
+const SN_SIZE = [[150, 'Klein'], [300, 'Mittel'], [500, 'Groß'], [800, 'Mahlzeit']];
 const SN_KIND = { suess: ['Süß', [.05, .55, .40]], herzhaft: ['Herzhaft', [.15, .40, .45]], protein: ['Eiweißreich', [.40, .35, .25]], getraenk: ['Getränk', [0, 1, 0]] };
 let snd = null;
 const snMacros = (kcal, kind) => { const [p, c, f] = SN_KIND[kind][1]; return [kcal, kcal * p / 4, kcal * c / 4, kcal * f / 9]; };
+const snTotal = () => Object.entries(snd.sel).reduce((a, [id, q]) => add(a, snM(SN[id], q), 1), [0, 0, 0, 0]);
+const mLine = m => `${Math.round(m[0])} kcal · ${Math.round(m[1])} g P · ${Math.round(m[2])} g KH · ${Math.round(m[3])} g F`;
+
 function snackSheet() {
-  return `<h3>Extra gegessen</h3>
-    <div class="lbl2">Was war's?</div>
+  const ids = Object.keys(snd.sel);
+  let h = `<h3>Snack eintragen</h3>
+    <div class="chips">${SNACKS.map(x => `<button class="chip${snd.sel[x.id] != null ? ' on' : ''}" data-act="snpick" data-v="${x.id}">${esc(x.n)}</button>`).join('')}</div>`;
+  if (ids.length) {
+    h += `<div class="snrows">${ids.map(id => {
+      const it = SN[id], q = snd.sel[id];
+      return `<div class="snrow"><div class="snn"><b>${esc(it.n)}</b><small id="snm-${id}">${mLine(snM(it, q))}</small></div>
+        <div class="snq-w"><button data-act="snminus" data-v="${id}" aria-label="weniger">−</button>
+        <input class="snq" data-id="${id}" type="number" inputmode="${it.unit === 'stk' ? 'numeric' : 'decimal'}" min="0" step="${it.unit === 'stk' ? 1 : 1}" value="${q}">
+        <span>${it.unit === 'stk' ? 'Stk' : 'g'}</span><button data-act="snplus" data-v="${id}" aria-label="mehr">+</button></div></div>`;
+    }).join('')}</div>
+    <div class="macro" id="snSum">Zusammen: ${mLine(snTotal())}</div>`;
+  }
+  h += `<button class="cta" data-act="snsave"${ids.length ? '' : ' disabled'}>Eintragen</button>`;
+  if (!snd.other) h += `<button class="undo" data-act="snother" style="display:block;margin:8px auto 0">Nicht dabei? Anderes notieren</button>`;
+  else h += `<div class="panel" style="margin-top:14px"><div class="lbl2">Was war's? (kommt danach auf die Liste)</div>
     <input id="snTxt" class="txtin" type="text" placeholder="z. B. Croissant vom Bäcker" value="${esc(snd.txt || '')}" autocomplete="off" enterkeyhint="done">
-    <div class="lbl2">Wie viel ungefähr?</div>
-    <div class="chips">${SN_SIZE.map(([k, l, ex]) => `<button class="chip big sz${snd.kcal === k ? ' on' : ''}" data-act="snsz" data-v="${k}"><b>${l}</b><small>~${k} kcal · ${ex}</small></button>`).join('')}</div>
-    <div class="lbl2">Eher …</div>
-    <div class="chips">${Object.entries(SN_KIND).map(([k, [l]]) => `<button class="chip${snd.kind === k ? ' on' : ''}" data-act="snk" data-v="${k}">${l}</button>`).join('')}</div>
-    <button class="cta" data-act="snsave"${snd.kcal ? '' : ' disabled'}>Eintragen</button>
-    <p class="mini">Die restlichen Mahlzeiten von heute passen sich automatisch an.</p>`;
+    <div class="lbl2">Ungefähr</div><div class="chips">${SN_SIZE.map(([k, l]) => `<button class="chip${snd.kcal === k ? ' on' : ''}" data-act="snsz" data-v="${k}">${l} ~${k} kcal</button>`).join('')}</div>
+    <div class="lbl2">Eher …</div><div class="chips">${Object.entries(SN_KIND).map(([k, [l]]) => `<button class="chip${snd.kind === k ? ' on' : ''}" data-act="snk" data-v="${k}">${l}</button>`).join('')}</div>
+    <button class="ghost" data-act="snsaveother"${snd.kcal ? '' : ' disabled'} style="width:100%">Grob eintragen</button></div>`;
+  return h;
 }
+// Mengen-Eingabe live übernehmen, ohne das Feld neu zu zeichnen
+document.addEventListener('input', e => {
+  const el = e.target.closest && e.target.closest('#sheet .snq');
+  if (!el || !snd) return;
+  const id = el.dataset.id, v = parseFloat(String(el.value).replace(',', '.'));
+  snd.sel[id] = isNaN(v) ? 0 : Math.max(0, v);
+  const m = document.getElementById('snm-' + id); if (m) m.textContent = mLine(snM(SN[id], snd.sel[id]));
+  const sum = document.getElementById('snSum'); if (sum) sum.textContent = 'Zusammen: ' + mLine(snTotal());
+});
 
 function render() {
   const st = dayState(), now = nowMin();
@@ -498,7 +537,7 @@ function render() {
     </div>`;
   }
 
-  h += `<button class="ghost" data-act="snack" style="width:100%;margin:0 0 12px">+ Snack / extra gegessen</button>`;
+  h += `<button class="ghost" data-act="snack" style="width:100%;margin:0 0 12px">+ Snack eintragen</button>`;
   h += bars(p);
 
   // Restlicher Tag
@@ -518,7 +557,7 @@ function render() {
   if (logged.length || ex.length) {
     const lab = { eaten: 'gegessen', half: 'halbe Portion', skip: 'ausgefallen' };
     h += `<div class="panel"><h3>Eingetragen</h3>${logged.map(x => `<div class="tl"><div class="tl-t">${hm(st.log[x.id].at)}</div><div class="tl-b"><b>${esc(x.name)}</b><span>${lab[st.log[x.id].st]}</span></div><button class="undo" data-act="undo" data-id="${x.id}">Rückgängig</button></div>`).join('')}
-      ${ex.map((x, i) => `<div class="tl"><div class="tl-t">${hm(x.at)}</div><div class="tl-b"><b>${esc(x.txt || 'Snack')}</b><span>extra · ~${x.kcal} kcal · ${SN_KIND[x.kind][0]}</span></div><button class="undo" data-act="snundo" data-i="${i}">Rückgängig</button></div>`).join('')}</div>`;
+      ${ex.map((x, i) => `<div class="tl"><div class="tl-t">${hm(x.at)}</div><div class="tl-b"><b>${esc(x.txt || 'Snack')}</b><span>extra · ${x.kind === 'list' ? mLine(x.m) : '~' + x.kcal + ' kcal · ' + (SN_KIND[x.kind] ? SN_KIND[x.kind][0] : '')}</span></div><button class="undo" data-act="snundo" data-i="${i}">Rückgängig</button></div>`).join('')}</div>`;
   }
   return h;
 }
@@ -534,13 +573,23 @@ function click(e) {
   if (!b) return false;
   const st = dayState(), act = b.dataset.act, now = nowMin();
   const ti = document.getElementById('snTxt'); if (snd && ti) snd.txt = ti.value;
-  if (act === 'snack') { snd = { txt: '', kcal: null, kind: 'herzhaft' }; Shell.sheet(snackSheet()); Shell.buzz(); setTimeout(() => { const i = document.getElementById('snTxt'); if (i) i.focus(); }, 450); return true; }
+  if (act === 'snack') { snd = { sel: {}, other: false, txt: '', kcal: null, kind: 'herzhaft' }; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
+  if (act === 'snpick') { const id = b.dataset.v; if (snd.sel[id] != null) delete snd.sel[id]; else snd.sel[id] = SN[id].def; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
+  if (act === 'snminus' || act === 'snplus') { const it = SN[b.dataset.v]; const q = snd.sel[b.dataset.v] || 0; snd.sel[b.dataset.v] = Math.max(0, Math.round((q + (act === 'snplus' ? it.step : -it.step)) * 10) / 10); Shell.sheet(snackSheet()); Shell.buzz(); return true; }
+  if (act === 'snother') { snd.other = true; Shell.sheet(snackSheet()); Shell.buzz(); setTimeout(() => { const i = document.getElementById('snTxt'); if (i) i.focus(); }, 300); return true; }
   if (act === 'snsz') { snd.kcal = +b.dataset.v; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
   if (act === 'snk') { snd.kind = b.dataset.v; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
   if (act === 'snsave') {
-    if (!snd || !snd.kcal) return true;
-    st.extra = st.extra || []; st.extra.push({ at: now, txt: (snd.txt || '').trim().slice(0, 80), kcal: snd.kcal, kind: snd.kind, m: snMacros(snd.kcal, snd.kind) });
+    const items = Object.entries(snd.sel).filter(([, q]) => q > 0).map(([id, q]) => ({ id, q }));
+    if (!items.length) return true;
+    const m = items.reduce((a, x) => add(a, snM(SN[x.id], x.q), 1), [0, 0, 0, 0]);
+    st.extra = st.extra || []; st.extra.push({ at: now, kind: 'list', items, txt: items.map(x => `${snQty(SN[x.id], x.q)} ${SN[x.id].n}`).join(', '), kcal: Math.round(m[0]), m });
     store(st); snd = null; Shell.closeSheet(); Shell.toast('Snack eingetragen'); Shell.buzz(); Shell.refresh(); return true;
+  }
+  if (act === 'snsaveother') {
+    if (!snd || !snd.kcal) return true;
+    st.extra = st.extra || []; st.extra.push({ at: now, txt: (snd.txt || '').trim().slice(0, 80), kcal: snd.kcal, kind: snd.kind, m: snMacros(snd.kcal, snd.kind), todo: true });
+    store(st); snd = null; Shell.closeSheet(); Shell.toast('Notiert – kommt auf die Liste'); Shell.buzz(); Shell.refresh(); return true;
   }
   if (act === 'snundo') { (st.extra || []).splice(+b.dataset.i, 1); store(st); Shell.buzz(); Shell.refresh(); return true; }
   if (act === 'tt') { draft.type = b.dataset.v; draft.dur = TT_DUR[draft.type]; if (draft.type !== 'badminton') draft.rad = false; draft.start = FLEX.includes(draft.type) ? 'flex' : (draft.start === 'flex' ? null : draft.start); }
