@@ -65,7 +65,7 @@ const TT_DUR = { badminton: 120, gymOber: 75, gymBeine: 75, intervalle: 45, fahr
 // Was laut Plan an welchem Wochentag dran ist (0 = Sonntag)
 const WEEK = [
   { type: 'intervalle' }, { type: 'badminton', dur: 120 }, { type: 'gymOber' },
-  { type: 'badminton', dur: 120 }, { type: 'gymBeine' }, { type: 'badminton', dur: 90 }, { type: 'intervalle' }
+  { type: 'badminton', dur: 120, rad: true }, { type: 'gymBeine' }, { type: 'badminton', dur: 90 }, { type: 'intervalle' }
 ];
 
 // ---------- Hilfen ----------
@@ -103,11 +103,33 @@ fetch('schedule.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).
   if (j && j.days) { SCHEDULE = j; save('tf-schedule', j); window.Shell && Shell.refresh(); }
 }).catch(() => {});
 
-function sessionsToday(st) {
+// Gym und Intervalle sind zeitlich flexibel, Badminton ist fest, Fahrrad optional.
+const FLEX = ['gymOber', 'gymBeine', 'intervalle'];
+function rawSessions(st) {
   if (st.sess) return st.sess;
   const cal = (SCHEDULE.days || {})[dkey(new Date())];
   if (cal && cal.length) return cal.map(x => ({ type: x.type, start: toMin(x.start), end: toMin(x.end), title: x.title, src: 'cal' }));
-  return null; // unbekannt → fragen
+  const def = WEEK[new Date().getDay()];
+  if (FLEX.includes(def.type)) return [{ type: def.type, flex: true, auto: true }];
+  return null; // Badminton-Tag ohne Zeit → fragen
+}
+// Flexibles Training: ideal 3 h nach dem Mittagessen, nie in der Vergangenheit
+function flexStart(st, now) {
+  const l = st.log.mi;
+  const lunch = l && l.st !== 'notyet' && l.st !== 'skip' ? l.at : Math.max(750, now);
+  const t = Math.max(lunch + PRE_BIG, now);
+  return Math.ceil(t / 15) * 15;
+}
+function sessionsToday(st, now = nowMin()) {
+  let base = rawSessions(st);
+  if (!base) return null;
+  base = base.slice();
+  if (st.rad && st.rad.done && !base.some(x => x.type === 'fahrrad')) base.push({ type: 'fahrrad', start: st.rad.start, end: st.rad.end });
+  return base.map(x => {
+    if (!x.flex) return x;
+    const start = flexStart(st, now);
+    return { ...x, start, end: start + TT_DUR[x.type] };
+  });
 }
 function tplFor(sess) {
   if (!sess.length) return 'rest';
@@ -127,7 +149,7 @@ function mainSess(sess) {
 
 // ---------- Tagesablauf ----------
 function buildDay(st, now) {
-  const sess = sessionsToday(st);
+  const sess = sessionsToday(st, now);
   if (!sess) return { unknown: true };
   const T = tplFor(sess), tpl = TPL[T], main = mainSess(sess);
   const s = main ? main.start : null, e = main ? main.end : null;
@@ -169,7 +191,7 @@ function buildDay(st, now) {
   slots.push(ab);
 
   // Mittag verpasst und Training rückt näher → leicht vorher, groß danach
-  if (main && !after && !done('mi') && now >= s - PRE_BIG && now < e) {
+  if (main && !main.flex && !after && !done('mi') && now >= s - PRE_BIG && now < e) {
     mi.t = e + 30; mi.after = true; mi.swapped = true;
     mi.name = 'Große Mahlzeit nach dem Training';
     if (!done('ab')) {
@@ -180,7 +202,9 @@ function buildDay(st, now) {
   // Training vorbei, Mittag und Abend beide offen → zu einer Mahlzeit zusammenlegen (nicht zu viel vor dem Schlafen)
   if (main && now >= e && !done('mi') && !done('ab')) { ab.merged = true; mi.t = Math.max(mi.t, e + 30); mi.after = true; mi.name = 'Große Mahlzeit nach dem Training'; }
   // Sobald das Training vorbei ist, Vorher-Snacks, die nicht gegessen wurden, streichen
-  slots.forEach(x => { if ((x.kind === 'sn' || x.kind === 'wa') && main && now >= e && !done(x.id)) x.merged = true; });
+  slots.forEach(x => { if (((x.kind === 'sn' && x.snack === 'pre') || x.kind === 'wa') && main && now >= e && !done(x.id)) x.merged = true; });
+  // Snack „vor oder direkt nach“ dem Gym: nie überfällig, rutscht notfalls direkt hinter das Training
+  slots.forEach(x => { if (x.kind === 'sn' && x.snack !== 'pre' && !done(x.id)) x.t = now < s ? Math.max(x.t, now) : now < e ? e : now; });
   slots.forEach(x => { if (x.kind === 'zw' && main && now > s - PRE_BIG && !done(x.id)) x.merged = true; });
   if (main && now >= e && !done('mi') && ab.merged) mi.mergedDinner = true;
   if (mi.after && lateEnd != null && mi.t >= lateEnd) mi.noFat = true;
@@ -345,7 +369,7 @@ function trainingAsk(st, inSheet) {
   const wd = new Date().getDay();
   if (!draft) {
     const def = WEEK[wd];
-    draft = { type: def.type, dur: def.dur || TT_DUR[def.type], start: null, rad: false };
+    draft = { type: def.type, dur: def.dur || TT_DUR[def.type], start: FLEX.includes(def.type) ? 'flex' : null, rad: false };
   }
   const times = []; for (let t = 15 * 60; t <= 21 * 60 + 30; t += 30) times.push(t); for (let t = 6 * 60; t < 15 * 60; t += 30) times.push(t);
   const chip = (act, val, on, txt) => `<button class="chip${on ? ' on' : ''}" data-act="${act}" data-v="${val}">${txt}</button>`;
@@ -357,7 +381,8 @@ function trainingAsk(st, inSheet) {
     ${draft.type === 'badminton' ? `<div class="lbl2">Dauer</div><div class="chips">${[90, 120].map(d => chip('td', d, draft.dur === d, dur(d))).join('')}</div>` : ''}
     ${draft.type === 'badminton' ? `<div class="chips">${chip('trad', draft.rad ? 0 : 1, draft.rad, 'plus Fahrrad Zone 2 vorher')}</div>` : ''}
     <div class="lbl2">Beginn</div>
-    <div class="chips scroll-x">${times.map(t => chip('ts', t, draft.start === t, hm(t))).join('')}</div>
+    <div class="chips scroll-x">${FLEX.includes(draft.type) ? chip('ts', 'flex', draft.start === 'flex', 'Flexibel') : ''}${times.map(t => chip('ts', t, draft.start === t, hm(t))).join('')}</div>
+    ${draft.start === 'flex' ? '<p class="mini">Die App schlägt dir die beste Zeit vor (3 h nach dem Mittagessen).</p>' : ''}
     <button class="cta" data-act="tsave" ${draft.start == null ? 'disabled' : ''}>Übernehmen</button>
     <button class="ghost" data-act="tnone">Heute kein Training</button>
   </div>`;
@@ -395,9 +420,20 @@ function render() {
 
   // Kontextzeile
   const ctxTxt = !sess.length ? 'Kein Training heute' :
-    sess.map(x => `${TT[x.type]} ${hm(x.start)}–${hm(x.end)}`).join(' · ');
+    sess.map(x => x.flex ? `${TT[x.type]} · flexibel, ideal ab ${hm(x.start)}` : `${TT[x.type]} ${hm(x.start)}–${hm(x.end)}`).join(' · ');
   h += `<button class="daychip" data-act="tedit"><span>${esc(tpl.name)}</span><small>${esc(ctxTxt)}${sess.some(x => x.src === 'cal') ? ' · aus Kalender' : ''}</small><b>ändern</b></button>`;
   if (tpl.note) h += `<p class="mini">${tpl.note}</p>`;
+  const flex = sess.find(x => x.flex);
+  if (flex) {
+    const lunchDone = st.log.mi && st.log.mi.st !== 'notyet';
+    h += `<div class="panel ask"><div class="ask-q">${TT[flex.type]}: ideal ab ${hm(flex.start)}</div>
+      <p class="mini">${lunchDone ? '3 h nach deinem Mittagessen' : 'Plan: erst Mittagessen, dann 3 h Pause'}. Tipp an, wenn du losgehst, dann passt sich der Rest des Tages an.</p>
+      <div class="ask-b"><button class="chip big" data-act="fgo">Ich gehe jetzt</button><button class="chip big" data-act="fdone">Schon erledigt</button><button class="chip big" data-act="fnone">Heute kein ${flex.type === 'intervalle' ? 'Training' : 'Gym'}</button></div></div>`;
+  }
+  if (WEEK[new Date().getDay()].rad && !st.rad && sess.some(x => x.type === 'badminton')) {
+    h += `<div class="panel ask"><div class="ask-q">Fahrrad (Zone 2) heute?</div><p class="mini">Optional laut Plan. Nur wenn du fährst, gibt es mehr Kohlenhydrate und den Snack danach.</p>
+      <div class="ask-b"><button class="chip big" data-act="rad" data-v="1">Gerade gefahren</button><button class="chip big" data-act="rad" data-v="0">Heute nicht</button></div></div>`;
+  }
 
   // Rückfrage: schon gegessen?
   const overdue = p.slots.find(x => !st.log[x.id] && x.t < now - 30 && p.rem.includes(x));
@@ -475,23 +511,33 @@ function click(e) {
   const b = e.target.closest('[data-act]');
   if (!b) return false;
   const st = dayState(), act = b.dataset.act, now = nowMin();
-  if (act === 'tt') { draft.type = b.dataset.v; draft.dur = TT_DUR[draft.type]; if (draft.type !== 'badminton') draft.rad = false; }
+  if (act === 'tt') { draft.type = b.dataset.v; draft.dur = TT_DUR[draft.type]; if (draft.type !== 'badminton') draft.rad = false; draft.start = FLEX.includes(draft.type) ? 'flex' : (draft.start === 'flex' ? null : draft.start); }
   else if (act === 'td') draft.dur = +b.dataset.v;
   else if (act === 'trad') draft.rad = b.dataset.v === '1';
-  else if (act === 'ts') draft.start = +b.dataset.v;
+  else if (act === 'ts') draft.start = b.dataset.v === 'flex' ? 'flex' : +b.dataset.v;
   else if (act === 'tsave') {
     if (draft.start == null) return true;
     const sess = [];
-    if (draft.rad) sess.push({ type: 'fahrrad', start: Math.max(360, draft.start - 240), end: Math.max(420, draft.start - 180) });
-    sess.push({ type: draft.type, start: draft.start, end: draft.start + draft.dur });
+    if (draft.start === 'flex') sess.push({ type: draft.type, flex: true });
+    else {
+      if (draft.rad) sess.push({ type: 'fahrrad', start: Math.max(360, draft.start - 240), end: Math.max(420, draft.start - 180) });
+      sess.push({ type: draft.type, start: draft.start, end: draft.start + draft.dur });
+    }
     st.sess = sess; draft = null; store(st); Shell.closeSheet && Shell.closeSheet(); Shell.toast('Training gespeichert');
   }
   else if (act === 'tnone') { st.sess = []; draft = null; store(st); Shell.closeSheet && Shell.closeSheet(); Shell.toast('Ruhetag eingetragen'); }
   else if (act === 'tedit') {
     const cur = sessionsToday(st) || [], m = cur.length ? mainSess(cur) : null;
-    draft = m ? { type: m.type, dur: m.end - m.start, start: m.start, rad: cur.some(x => x.type === 'fahrrad') } : null;
+    draft = m ? { type: m.type, dur: m.end - m.start, start: m.flex ? 'flex' : m.start, rad: cur.some(x => x.type === 'fahrrad') } : null;
     Shell.sheet(trainingAsk(st, true)); return true;
   }
+  else if (act === 'fgo' || act === 'fdone') {
+    const cur = rawSessions(st) || [];
+    st.sess = cur.map(x => x.flex ? (act === 'fgo' ? { type: x.type, start: now, end: now + TT_DUR[x.type] } : { type: x.type, start: Math.max(0, now - TT_DUR[x.type] - 15), end: Math.max(15, now - 15) }) : x);
+    store(st); Shell.toast(act === 'fgo' ? 'Viel Erfolg beim Training' : 'Training eingetragen');
+  }
+  else if (act === 'fnone') { st.sess = (rawSessions(st) || []).filter(x => !x.flex); store(st); Shell.toast('Heute ohne Gym'); }
+  else if (act === 'rad') { st.rad = b.dataset.v === '1' ? { done: true, start: Math.max(0, now - 75), end: now } : { done: false }; store(st); }
   else if (act === 'ch') { st.choice[b.dataset.k] = b.dataset.v; store(st); }
   else if (act === 'notyet') { st.log[b.dataset.id] = { st: 'notyet', at: now }; store(st); }
   else if (act === 'log') {
