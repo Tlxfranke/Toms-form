@@ -566,5 +566,5 @@ function glance() {
   return { num: cur.t <= now + 10 ? 'Jetzt' : hm(cur.t), hint: cur.name };
 }
 
-window.Modules.essen = { render, click, glance, _plan: plan, _supps: supps };
+window.Modules.essen = { render, click, glance, _plan: plan, _supps: supps, _today: () => sessionsToday(dayState()) };
 })();

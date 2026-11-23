@@ -158,6 +158,25 @@ body.open #fab{transform:scale(0)}
 .supp.on i::after{content:"";width:9px;height:5px;border-left:2.5px solid #0b0b0c;border-bottom:2.5px solid #0b0b0c;transform:rotate(-45deg) translate(1px,-1px)}
 .supp span{display:flex;flex-direction:column}.supp small{color:var(--mute);font-size:13px}
 .supp.on b{color:var(--mute);text-decoration:line-through}
+/* Fortschritt & Recovery */
+.step{display:flex;align-items:center;gap:10px;margin:6px 0 2px}
+.step button{width:56px;height:56px;border-radius:18px;background:var(--card2);font:700 30px/1 "Barlow Condensed";transition:transform .5s var(--soft)}
+.step button:active{transform:scale(.92);transition:transform .12s}
+.step b{flex:1;text-align:center;font:800 44px/1 "Barlow Condensed"}.step b small{font-size:20px;color:var(--mute)}
+.chips.rpe{display:grid;grid-template-columns:repeat(5,1fr)}
+.chips.rpe .chip{min-height:58px;padding:4px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+.chips.rpe .chip b{font:800 22px/1 "Barlow Condensed"}.chips.rpe .chip small{font-size:10px;font-weight:600;opacity:.8;line-height:1.1}
+.chips.w5{display:grid;grid-template-columns:repeat(5,1fr)}.chips.w5 .chip{padding:0 2px;font-size:13px}
+.rec .chip.on{background:var(--acc2);color:#0b0b0c}.rec .cta{background:var(--acc2);color:#0b0b0c}.rec .ask{border-color:#2fd4c055}
+.rec .track .rc{background:var(--acc2)}.warn{color:#ffb199}
+.seg2{display:flex;gap:8px;margin-bottom:10px}
+.kv{text-align:right;display:flex;flex-direction:column}.kv b{font:700 20px "Barlow Condensed"}.kv small{font-size:12px;color:var(--mute)}
+.kv .up{color:var(--acc2)}.kv .dn{color:#ffb199}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.kpis div{background:var(--card2);border-radius:14px;padding:10px}.kpis b{display:block;font:800 26px/1 "Barlow Condensed"}.kpis small{color:var(--mute);font-size:11px}
+.bars7{display:flex;gap:6px;height:90px;align-items:flex-end;margin:4px 0 8px}
+.bars7 div{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
+.bars7 i{width:100%;border-radius:5px 5px 2px 2px;background:var(--acc2)}.bars7 small{font-size:11px;color:var(--mute)}
 @media (prefers-reduced-motion:reduce){*{transition-duration:.01s!important;animation:none!important}}
 </style>
 </head>
@@ -168,7 +187,7 @@ body.open #fab{transform:scale(0)}
     <div class="av">T</div>
   </div>
   <div class="grid" id="grid"></div>
-  <p class="note">Version 0.1 · Inhalte folgen</p>
+  <p class="note">Version 0.2</p>
 </main>
 
 <button id="fab" aria-label="Schnell eintragen"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
@@ -184,6 +203,7 @@ body.open #fab{transform:scale(0)}
 <label id="hap" style="position:absolute;left:-999px;opacity:0"><input type="checkbox" switch></label>
 
 <script src="nutrition.js"></script>
+<script src="training.js"></script>
 <script>
 {
 const I={
@@ -193,6 +213,7 @@ const I={
   moon:'<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
   cal:'<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/>',
   chart:'<path d="M5 20V10M12 20V4M19 20v-7"/>',
+  trend:'<path d="M4 17l6-6 4 4 6-7M14 8h6v6"/>',
   heart:'<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
   scale:'<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 9a4 4 0 0 1 6 0l-3 3"/>',
   note:'<path d="M5 4h10l4 4v12H5zM9 12h6M9 16h4"/>',
@@ -207,8 +228,9 @@ const AREAS=[
   {id:'heute',type:'glance',title:'Heute',hero:true,icon:'bolt',col:'#ff5a36',hint:'Dein Tag auf einen Blick'},
   {id:'essen',type:'glance',title:'Ernährung',icon:'food',col:'#ff5a36',hint:'Nächste Mahlzeit'},
   {id:'training',type:'glance',title:'Training',icon:'dumb',col:'#ff5a36',hint:'Nächste Einheit'},
+  {id:'fortschritt',type:'data',title:'Fortschritt',icon:'trend',col:'#ff5a36',hint:'Gym-Progress'},
   {id:'recovery',type:'glance',title:'Recovery',icon:'moon',col:'#2fd4c0',hint:'Erholung & Schlaf'},
-  {id:'plan',type:'read',title:'Trainingsplan',icon:'cal',col:'#f5f5f3',hint:'Deine Woche'},
+  {id:'plan',type:'read',title:'Trainingsplan',icon:'cal',col:'#f5f5f3',hint:'Deine Woche',wide:true},
   {id:'daten',type:'data',title:'Verläufe',icon:'chart',col:'#ff5a36',hint:'Statistik'},
   {id:'koerper',type:'data',title:'Körper',icon:'heart',col:'#2fd4c0',hint:'Gesundheitswerte'}
 ];

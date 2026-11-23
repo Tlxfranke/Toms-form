@@ -1,0 +1,378 @@
+// Training-Tracking: zwei getrennte Bereiche
+//  - "fortschritt": Gym-Progress (Sätze, Gewicht, Wdh., RIR → e1RM, Wochenvolumen)
+//  - "recovery":    Belastung & Erholung (Intensitätsabfrage nach Einheiten, Morgen-Check, später Uhr + Brustgurt)
+// Alles per Antippen, nichts eintippen.
+window.Modules = window.Modules || {};
+(function () {
+'use strict';
+
+// ---------- Helfer ----------
+const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const pad = n => String(n).padStart(2, '0');
+const dkey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const today = () => dkey(new Date());
+const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return dkey(d); };
+const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
+const hm = m => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
+const fmtKg = v => (Math.round(v * 10) / 10).toLocaleString('de-DE');
+const chip = (attr, v, label, on) => `<button class="chip${on ? ' on' : ''}" ${attr}="${v}">${label}</button>`;
+
+// =====================================================================
+// FORTSCHRITT (Gym)
+// =====================================================================
+// step = Schritt am Gewichts-Regler, bw = Körpergewichtsübung (kg = Zusatzgewicht), noKg = nur Wiederholungen
+const EX = {
+  bank: { n: 'Bankdrücken', g: 'Brust', step: 2.5 },
+  schraeg: { n: 'Schrägbank (KH)', g: 'Brust', step: 2 },
+  klimmzug: { n: 'Klimmzüge', g: 'Rücken', step: 2.5, bw: true },
+  latzug: { n: 'Latzug', g: 'Rücken', step: 5 },
+  rudern: { n: 'Rudern', g: 'Rücken', step: 2.5 },
+  schulter: { n: 'Schulterdrücken', g: 'Schulter', step: 2 },
+  seitheben: { n: 'Seitheben', g: 'Schulter', step: 1 },
+  facepull: { n: 'Face Pulls', g: 'Schulter', step: 2.5 },
+  aussenrot: { n: 'Außenrotation Kabel', g: 'Schulter', step: 1 },
+  bizeps: { n: 'Bizepscurls', g: 'Arme', step: 1 },
+  trizeps: { n: 'Trizepsdrücken', g: 'Arme', step: 2.5 },
+  kniebeuge: { n: 'Kniebeuge', g: 'Beine', step: 2.5 },
+  presse: { n: 'Beinpresse', g: 'Beine', step: 5 },
+  split: { n: 'Bulgarian Split Squat', g: 'Beine', step: 2 },
+  ausfall: { n: 'Ausfallschritte', g: 'Beine', step: 2 },
+  rdl: { n: 'Rumänisches Kreuzheben', g: 'Hüfte/Beinbeuger', step: 2.5 },
+  beuger: { n: 'Beinbeuger', g: 'Hüfte/Beinbeuger', step: 2.5 },
+  hipthrust: { n: 'Hip Thrust', g: 'Hüfte/Beinbeuger', step: 5 },
+  adduktor: { n: 'Adduktoren', g: 'Hüfte/Beinbeuger', step: 5 },
+  waden: { n: 'Wadenheben', g: 'Waden', step: 5 },
+  sprung: { n: 'Box Jumps / Sprünge', g: 'Explosiv', noKg: true },
+  core: { n: 'Core (Pallof / Anti-Rotation)', g: 'Core', step: 2.5 }
+};
+const GYM_TYPES = { ober: 'Oberkörper', beine: 'Beine' };
+const DEF_SEL = {
+  ober: ['bank', 'klimmzug', 'rudern', 'schulter', 'facepull', 'trizeps', 'bizeps'],
+  beine: ['kniebeuge', 'rdl', 'split', 'beuger', 'waden', 'sprung', 'core']
+};
+
+const gym = () => load('tf-gym', { sel: DEF_SEL, sessions: [] });
+const gymSave = g => save('tf-gym', g);
+const active = g => g.sessions.find(s => !s.done && s.d === today()) || null;
+
+// Geschätztes 1RM (Epley, Reserve-Wdh. mitgezählt) – vergleichbar über verschiedene Wdh.-Bereiche
+const e1rm = s => s.kg > 0 ? s.kg * (1 + (s.r + (s.rir || 0)) / 30) : 0;
+const allSets = (g, ex, from) => g.sessions.filter(s => !from || s.d >= from).flatMap(s => s.sets.filter(x => x.ex === ex).map(x => ({ ...x, d: s.d })));
+const lastSet = (g, ex) => { const a = allSets(g, ex); return a[a.length - 1] || null; };
+function bestIn(g, ex, from, to) {
+  const a = allSets(g, ex, from).filter(x => !to || x.d < to);
+  if (!a.length) return null;
+  return EX[ex] && EX[ex].noKg ? Math.max(...a.map(x => x.r)) : Math.max(...a.map(e1rm));
+}
+
+let draft = null; // aktueller Satz im Regler
+
+function logger(g, ex) {
+  const E = EX[ex], ses = active(g), done = ses ? ses.sets.filter(x => x.ex === ex) : [];
+  const l = lastSet(g, ex);
+  if (!draft || draft.ex !== ex) draft = { ex, kg: l ? l.kg : (E.bw || E.noKg ? 0 : 20), r: l ? l.r : 8, rir: l ? (l.rir ?? 2) : 2 };
+  const kgRow = E.noKg ? '' : `
+    <div class="lbl2">${E.bw ? 'Zusatzgewicht' : 'Gewicht'}</div>
+    <div class="step"><button data-ga="kg-" aria-label="weniger">−</button><b>${fmtKg(draft.kg)}<small> kg</small></b><button data-ga="kg+" aria-label="mehr">+</button></div>`;
+  return `<div class="gym"><h3>${E.n}</h3>
+    <p class="mini">${l ? `Letztes Mal: ${E.noKg ? '' : fmtKg(l.kg) + ' kg × '}${l.r} Wdh. · RIR ${l.rir >= 4 ? '4+' : l.rir}` : 'Erster Eintrag für diese Übung'}</p>
+    ${kgRow}
+    <div class="lbl2">Wiederholungen</div>
+    <div class="step"><button data-ga="r-" aria-label="weniger">−</button><b>${draft.r}</b><button data-ga="r+" aria-label="mehr">+</button></div>
+    <div class="lbl2">Wie viele Wdh. wären noch gegangen? (RIR)</div>
+    <div class="chips">${[0, 1, 2, 3, 4].map(v => chip('data-grir', v, v === 4 ? '4+' : v, draft.rir === v)).join('')}</div>
+    <button class="cta" data-ga="addset">Satz ${done.length + 1} speichern</button>
+    ${done.length ? `<div class="sets">${done.map((x, i) => `<div class="tl"><div class="tl-t">${i + 1}</div><div class="tl-b">${E.noKg ? '' : fmtKg(x.kg) + ' kg × '}${x.r} Wdh.<small>RIR ${x.rir >= 4 ? '4+' : x.rir}</small></div>${i === done.length - 1 ? '<button class="undo" data-ga="undoset">Rückgängig</button>' : ''}</div>`).join('')}</div>` : ''}
+    <div class="row2"><button class="ghost" data-ga="close">Fertig mit ${E.n}</button></div></div>`;
+}
+
+function finishSheet() {
+  return `<div class="gym"><h3>Einheit abschließen</h3>
+    <p class="mini">Wie anstrengend war die Einheit insgesamt? (geht in die Recovery)</p>
+    <div class="chips rpe">${RPE.map((t, i) => `<button class="chip" data-gfin="${i + 1}"><b>${i + 1}</b><small>${t}</small></button>`).join('')}</div>
+    <button class="ghost" data-ga="close">Abbrechen</button></div>`;
+}
+
+function selSheet(g, t) {
+  const ids = Object.keys(EX);
+  return `<div class="gym"><h3>Übungen · ${GYM_TYPES[t]}</h3>
+    <div class="seg2">${Object.entries(GYM_TYPES).map(([k, v]) => chip('data-gseltab', k, v, k === t)).join('')}</div>
+    <div class="chips">${ids.map(id => chip('data-gsel', id, EX[id].n, (g.sel[t] || []).includes(id))).join('')}</div>
+    <p class="mini">Deine echten Übungen trage ich ein, sobald du mir deinen Gym-Plan gibst.</p>
+    <button class="cta" data-ga="close">Fertig</button></div>`;
+}
+let selTab = 'ober';
+
+function weekSets(g) {
+  // harte Sätze (RIR ≤ 3) je Muskelgruppe, letzte 7 Tage
+  const from = daysAgo(6), m = {};
+  g.sessions.filter(s => s.d >= from).forEach(s => s.sets.forEach(x => { if ((x.rir ?? 2) <= 3) { const k = EX[x.ex] ? EX[x.ex].g : '?'; m[k] = (m[k] || 0) + 1; } }));
+  return m;
+}
+
+function gymTodayType() {
+  try {
+    const t = window.Modules.essen && window.Modules.essen._today && window.Modules.essen._today();
+    if (t) { if (t.some(x => x.type === 'gymBeine')) return 'beine'; if (t.some(x => x.type === 'gymOber')) return 'ober'; }
+  } catch (e) {}
+  return null;
+}
+
+function renderGym() {
+  const g = gym(), ses = active(g);
+  let h = '';
+  if (ses) {
+    const ids = g.sel[ses.t] || [];
+    const extra = [...new Set(ses.sets.map(x => x.ex))].filter(x => !ids.includes(x));
+    h += `<div class="panel now"><div class="now-l">Einheit läuft · seit ${hm(ses.start)}</div><div class="now-t">${GYM_TYPES[ses.t]}</div>
+      ${[...ids, ...extra].map(id => {
+        const s = ses.sets.filter(x => x.ex === id), E = EX[id];
+        const sum = s.length ? `${s.length} ${s.length === 1 ? 'Satz' : 'Sätze'} · ${E.noKg ? '' : fmtKg(s[s.length - 1].kg) + ' kg × '}${s[s.length - 1].r}` : 'noch offen';
+        return `<button class="supp${s.length ? ' on' : ''}" data-gex="${id}"><i></i><span><b>${E.n}</b><small>${sum}</small></span></button>`;
+      }).join('')}
+      <button class="cta" data-ga="finish"${ses.sets.length ? '' : ' disabled'}>Einheit abschließen</button>
+      <button class="undo" data-ga="cancel">Einheit verwerfen</button></div>`;
+  } else {
+    const sug = gymTodayType();
+    h += `<div class="panel"><h3>Gym-Einheit starten</h3>
+      ${sug ? `<p class="mini">Heute laut Plan: ${GYM_TYPES[sug]}</p>` : ''}
+      <div class="row2">${Object.entries(GYM_TYPES).map(([k, v]) => `<button class="chip big${k === sug ? ' on' : ''}" data-gstart="${k}">${v}</button>`).join('')}</div></div>`;
+  }
+
+  // Kraftentwicklung je Übung: bestes e1RM letzte 14 Tage vs. davor (4 Wochen)
+  const rows = [...new Set([...(g.sel.ober || []), ...(g.sel.beine || [])])].map(id => {
+    const E = EX[id], now = bestIn(g, id, daysAgo(13)), before = bestIn(g, id, daysAgo(41), daysAgo(13)), all = bestIn(g, id);
+    if (all == null) return null;
+    const val = E.noKg ? `${all} Wdh.` : `${fmtKg(Math.round(all * 2) / 2)} kg`;
+    const d = now != null && before ? Math.round((now / before - 1) * 100) : null;
+    return `<div class="tl"><div class="tl-b"><b>${E.n}</b><small>${E.noKg ? 'Bestwert' : 'geschätztes Maximum (1RM)'}</small></div>
+      <div class="kv"><b>${val}</b>${d != null ? `<small class="${d > 0 ? 'up' : d < 0 ? 'dn' : ''}">${d > 0 ? '+' : ''}${d} %</small>` : ''}</div></div>`;
+  }).filter(Boolean);
+  h += `<div class="panel"><h3>Kraftentwicklung</h3>${rows.length ? rows.join('') : '<p class="mini">Sobald du die ersten Sätze einträgst, siehst du hier je Übung dein geschätztes Maximum und die Veränderung zu den Wochen davor.</p>'}</div>`;
+
+  const ws = weekSets(g), keys = Object.keys(ws);
+  h += `<div class="panel"><h3>Harte Sätze · letzte 7 Tage</h3>${keys.length ? keys.sort((a, b) => ws[b] - ws[a]).map(k => `
+    <div class="bar"><div class="bar-h"><span>${k}</span><b>${ws[k]}</b></div><div class="track"><i class="eat" data-w="${Math.min(100, ws[k] / 20 * 100)}%"></i></div></div>`).join('')
+    : '<p class="mini">Zählt Sätze mit höchstens 3 Wdh. Reserve je Muskelgruppe – das ist der Wert, an dem sich Muskelaufbau am besten steuern lässt.</p>'}</div>`;
+
+  h += `<button class="ghost" data-ga="sel" style="width:100%">Übungen anpassen</button>`;
+  return h;
+}
+
+function clickGym(e) {
+  const b = e.target.closest('[data-ga],[data-gex],[data-gstart],[data-grir],[data-gfin],[data-gsel],[data-gseltab]');
+  if (!b) return false;
+  const g = gym(), ses = active(g), a = b.dataset.ga;
+  if (b.dataset.gstart) { g.sessions.push({ d: today(), t: b.dataset.gstart, start: nowMin(), sets: [] }); gymSave(g); Shell.toast('Einheit gestartet'); }
+  else if (b.dataset.gex) { draft = null; Shell.sheet(logger(g, b.dataset.gex)); Shell.buzz(); return true; }
+  else if (b.dataset.grir != null) { draft.rir = +b.dataset.grir; Shell.sheet(logger(g, draft.ex)); Shell.buzz(); return true; }
+  else if (a === 'kg-' || a === 'kg+') { const st = EX[draft.ex].step || 2.5; draft.kg = Math.max(0, draft.kg + (a === 'kg+' ? st : -st)); Shell.sheet(logger(g, draft.ex)); Shell.buzz(); return true; }
+  else if (a === 'r-' || a === 'r+') { draft.r = Math.max(1, draft.r + (a === 'r+' ? 1 : -1)); Shell.sheet(logger(g, draft.ex)); Shell.buzz(); return true; }
+  else if (a === 'addset' && ses) { ses.sets.push({ ex: draft.ex, kg: draft.kg, r: draft.r, rir: draft.rir }); gymSave(g); Shell.sheet(logger(g, draft.ex)); Shell.toast('Satz gespeichert'); }
+  else if (a === 'undoset' && ses) { for (let i = ses.sets.length - 1; i >= 0; i--) if (ses.sets[i].ex === draft.ex) { ses.sets.splice(i, 1); break; } gymSave(g); Shell.sheet(logger(g, draft.ex)); }
+  else if (a === 'close') { draft = null; Shell.closeSheet(); }
+  else if (a === 'finish') { Shell.sheet(finishSheet()); Shell.buzz(); return true; }
+  else if (b.dataset.gfin && ses) {
+    ses.done = true; ses.end = nowMin(); ses.rpe = +b.dataset.gfin; gymSave(g);
+    const dur = Math.max(20, Math.min(180, (ses.end - ses.start + 1440) % 1440 || 60));
+    addRecSession({ type: ses.t === 'beine' ? 'gymBeine' : 'gymOber', dur, rpe: ses.rpe, ref: 'gym-' + ses.start });
+    Shell.closeSheet(); Shell.toast('Einheit gespeichert 💪');
+  }
+  else if (a === 'cancel' && ses) { g.sessions.splice(g.sessions.indexOf(ses), 1); gymSave(g); Shell.toast('Einheit verworfen'); }
+  else if (a === 'sel') { selTab = (ses && ses.t) || 'ober'; Shell.sheet(selSheet(g, selTab)); Shell.buzz(); return true; }
+  else if (b.dataset.gseltab) { selTab = b.dataset.gseltab; Shell.sheet(selSheet(g, selTab)); return true; }
+  else if (b.dataset.gsel) { const l = g.sel[selTab] = g.sel[selTab] || []; const i = l.indexOf(b.dataset.gsel); if (i >= 0) l.splice(i, 1); else l.push(b.dataset.gsel); gymSave(g); Shell.sheet(selSheet(g, selTab)); }
+  else return false;
+  Shell.buzz(); Shell.refresh();
+  return true;
+}
+
+function glanceGym() {
+  const g = gym(), ses = active(g);
+  if (ses) return { num: ses.sets.length, hint: 'Sätze in laufender Einheit' };
+  const n = g.sessions.filter(s => s.done && s.d >= daysAgo(6)).length;
+  return { num: n, hint: n === 1 ? 'Gym-Einheit diese Woche' : 'Gym-Einheiten diese Woche' };
+}
+
+window.Modules.fortschritt = { render: renderGym, click: clickGym, glance: glanceGym };
+
+// =====================================================================
+// RECOVERY
+// =====================================================================
+// Belastung = Dauer × Anstrengung (Session-RPE nach Foster). Erholung = Morgen-Check + später Uhr/Gurt.
+const RPE = ['sehr leicht', 'leicht', 'locker', 'mittel', 'fordernd', 'hart', 'sehr hart', 'sehr hart+', 'extrem', 'maximal'];
+const TYPES = { badminton: 'Badminton', turnier: 'Turnier', gymOber: 'Gym Oberkörper', gymBeine: 'Gym Beine', intervalle: 'Intervalle', fahrrad: 'Fahrrad' };
+const KIND = { technik: 'Technik / Drills', footwork: 'Footwork / Athletik', spiel: 'Spielformen / Matches', punktspiel: 'Punktspiel / Turnier' };
+const FMT = { einzel: 'Einzel', doppel: 'Doppel', mixed: 'Mixed', gemischt: 'Gemischt' };
+const PAIN = { schulter: 'Schulter', ellbogen: 'Ellbogen', hand: 'Handgelenk', ruecken: 'Unterer Rücken', leiste: 'Leiste / Adduktoren', knie: 'Knie', sprung: 'Sprunggelenk', achilles: 'Achilles / Wade' };
+const WELL = [
+  ['schlaf', 'Wie gut hast du geschlafen?', ['mies', 'schlecht', 'okay', 'gut', 'super']],
+  ['muede', 'Wie frisch fühlst du dich?', ['platt', 'müde', 'normal', 'frisch', 'top']],
+  ['kater', 'Muskelkater?', ['stark', 'deutlich', 'etwas', 'kaum', 'keiner']],
+  ['stress', 'Stress (Uni, Alltag)?', ['sehr hoch', 'hoch', 'mittel', 'gering', 'keiner']],
+  ['stimmung', 'Stimmung / Lust auf Training?', ['keine', 'wenig', 'okay', 'gut', 'richtig Bock']]
+];
+
+const rec = () => load('tf-rec', { days: {} });
+const recSave = r => save('tf-rec', r);
+const recDay = (r, d) => r.days[d] = r.days[d] || { sess: [] };
+function addRecSession(s) {
+  const r = rec(), day = recDay(r, today());
+  day.sess = day.sess.filter(x => !s.ref || x.ref !== s.ref);
+  day.sess.push({ ...s, at: nowMin(), load: s.dur * s.rpe });
+  recSave(r);
+}
+const loadOf = (r, d) => ((r.days[d] || {}).sess || []).reduce((a, s) => a + (s.load || 0), 0);
+
+// Heute geplante/erledigte Einheiten, die vorbei sind und noch keine Bewertung haben
+function pending(r) {
+  let t = null;
+  try { t = window.Modules.essen && window.Modules.essen._today && window.Modules.essen._today(); } catch (e) {}
+  if (!t) return [];
+  const done = ((r.days[today()] || {}).sess || []).map(s => s.ref);
+  const now = nowMin();
+  return t.filter(s => !s.flex && s.end != null && s.end <= now && s.type !== 'gymOber' && s.type !== 'gymBeine')
+    .map(s => ({ ...s, ref: `${s.type}-${s.start}` })).filter(s => !done.includes(s.ref));
+}
+
+let rd = null; // Entwurf der Intensitätsabfrage
+const isBad = t => t === 'badminton' || t === 'turnier';
+function rateSheet() {
+  const bad = isBad(rd.type);
+  const durs = rd.type === 'turnier' ? [120, 180, 240, 300, 360, 420] : [45, 60, 75, 90, 120, 150];
+  if (!durs.includes(rd.dur)) durs.push(rd.dur), durs.sort((a, b) => a - b);
+  return `<div class="rec"><h3>${rd.fixed ? `Wie war ${TYPES[rd.type]}?` : 'Einheit bewerten'}</h3>
+    ${rd.fixed ? `<p class="mini">${hm(rd.start)}–${hm(rd.end)}</p>` : `<div class="chips">${Object.entries(TYPES).map(([k, v]) => chip('data-rt', k, v, rd.type === k)).join('')}</div>`}
+    ${bad ? `<div class="lbl2">Was stand im Vordergrund?</div>
+      <div class="chips">${Object.entries(KIND).map(([k, v]) => chip('data-rk', k, v, rd.kind === k)).join('')}</div>
+      <div class="lbl2">Gespielt</div>
+      <div class="chips">${Object.entries(FMT).map(([k, v]) => chip('data-rf', k, v, rd.fmt === k)).join('')}</div>
+      ${rd.kind === 'punktspiel' || rd.kind === 'spiel' ? `<div class="lbl2">Anzahl Spiele</div>
+      <div class="chips">${[1, 2, 3, 4, 5, 6, 8].map(v => chip('data-rm', v, v === 8 ? '7+' : v, rd.matches === v)).join('')}</div>` : ''}` : ''}
+    <div class="lbl2">Dauer (Minuten)</div>
+    <div class="chips">${durs.map(v => chip('data-rd', v, v, rd.dur === v)).join('')}</div>
+    <div class="lbl2">Wie anstrengend war es insgesamt? (1–10)</div>
+    <div class="chips rpe">${RPE.map((t, i) => `<button class="chip${rd.rpe === i + 1 ? ' on' : ''}" data-rr="${i + 1}"><b>${i + 1}</b><small>${t}</small></button>`).join('')}</div>
+    ${bad ? `<div class="lbl2">Beine am Ende</div>
+      <div class="chips">${['frisch', 'okay', 'schwer', 'leer'].map((v, i) => chip('data-rl', i, v, rd.legs === i)).join('')}</div>` : ''}
+    <div class="lbl2">Zwickt oder schmerzt etwas?</div>
+    <div class="chips">${chip('data-rp', 'none', 'Nichts', rd.pain && !rd.pain.length)}${Object.entries(PAIN).map(([k, v]) => chip('data-rp', k, v, (rd.pain || []).includes(k))).join('')}</div>
+    <button class="cta" data-ra="rsave"${rd.rpe ? '' : ' disabled'}>Speichern</button></div>`;
+}
+
+function morningPanel(day) {
+  const w = day.wellDraft || {};
+  return `<div class="panel ask"><div class="ask-q">Morgen-Check</div><p class="mini">Dauert 20 Sekunden. Zusammen mit Schlaf und Puls ergibt das deine Tagesform.</p>
+    ${WELL.map(([k, q, opts]) => `<div class="lbl2">${q}</div><div class="chips w5">${opts.map((o, i) => chip('data-rw', `${k}:${i + 1}`, o, w[k] === i + 1)).join('')}</div>`).join('')}
+    <div class="lbl2">Beschwerden?</div>
+    <div class="chips">${chip('data-rwp', 'none', 'Keine', w.pain && !w.pain.length)}${Object.entries(PAIN).map(([k, v]) => chip('data-rwp', k, v, (w.pain || []).includes(k))).join('')}</div>
+    <button class="cta" data-ra="wsave"${WELL.every(([k]) => w[k]) ? '' : ' disabled'}>Speichern</button></div>`;
+}
+const wellScore = w => WELL.reduce((a, [k]) => a + (w[k] || 0), 0);
+
+function renderRec() {
+  const r = rec(), day = r.days[today()] || { sess: [] };
+  let h = '<div class="rec">';
+
+  // 1) Intensitätsabfrage nach Einheiten
+  const p = pending(r);
+  p.forEach(s => {
+    h += `<div class="panel ask"><div class="ask-q">Wie hart war ${TYPES[s.type] || s.type}?</div>
+      <p class="mini">${hm(s.start)}–${hm(s.end)} · kurz bewerten, damit die Erholung stimmt</p>
+      <button class="cta" data-rate="${s.ref}">Jetzt bewerten</button></div>`;
+  });
+
+  // 2) Morgen-Check
+  if (!day.well && nowMin() >= 300) h += morningPanel(day);
+  else if (day.well) {
+    const sc = wellScore(day.well);
+    h += `<div class="panel"><h3>Tagesform (Gefühl)</h3>
+      <div class="bar"><div class="bar-h"><span>Morgen-Check</span><b>${sc} / 25</b></div><div class="track"><i class="eat rc" data-w="${sc / 25 * 100}%"></i></div></div>
+      ${day.well.pain && day.well.pain.length ? `<p class="mini warn">Beschwerden: ${day.well.pain.map(k => PAIN[k]).join(', ')}</p>` : ''}
+      <button class="undo" data-ra="wredo">Neu ausfüllen</button></div>`;
+  }
+
+  // 3) Belastung
+  const l7 = [...Array(7)].map((_, i) => loadOf(r, daysAgo(i))).reduce((a, b) => a + b, 0);
+  const l28 = [...Array(28)].map((_, i) => loadOf(r, daysAgo(i))).reduce((a, b) => a + b, 0);
+  const haveDays = Object.keys(r.days).filter(d => (r.days[d].sess || []).length).length;
+  const ratio = l28 ? l7 / (l28 / 4) : null;
+  const days7 = [...Array(7)].map((_, i) => daysAgo(6 - i));
+  const max = Math.max(1, ...days7.map(d => loadOf(r, d)));
+  h += `<div class="panel"><h3>Belastung</h3>
+    <div class="kpis"><div><b>${loadOf(r, today())}</b><small>heute</small></div><div><b>${l7}</b><small>7 Tage</small></div>
+      <div><b>${ratio != null && haveDays >= 10 ? ratio.toFixed(2).replace('.', ',') : '–'}</b><small>Woche ÷ Ø 4 Wochen</small></div></div>
+    <div class="bars7">${days7.map(d => `<div><i style="height:${Math.max(3, loadOf(r, d) / max * 100)}%"></i><small>${new Date(d + 'T12:00').toLocaleDateString('de-DE', { weekday: 'short' }).slice(0, 2)}</small></div>`).join('')}</div>
+    <p class="mini">Belastung = Minuten × Anstrengung (1–10). Das Verhältnis wird nach ca. 2 Wochen Daten aussagekräftig.</p>
+    ${(day.sess || []).map(s => `<div class="tl"><div class="tl-t">${hm(s.at)}</div><div class="tl-b">${TYPES[s.type] || s.type}${s.kind ? ' · ' + KIND[s.kind] : ''}<small>${s.dur} min · RPE ${s.rpe}${s.fmt ? ' · ' + FMT[s.fmt] : ''}${s.pain && s.pain.length ? ' · ⚠︎ ' + s.pain.map(k => PAIN[k]).join(', ') : ''}</small></div></div>`).join('')}
+    <button class="ghost" data-ra="manual" style="width:100%">Einheit nachtragen</button></div>`;
+
+  // 4) Uhr & Brustgurt (Datenfelder, die später automatisch gefüllt werden)
+  const gm = day.garmin, hr = day.hr;
+  const f = (lbl, v) => `<div class="tl"><div class="tl-b">${lbl}</div><div class="kv"><b>${v != null ? v : '–'}</b></div></div>`;
+  h += `<div class="panel"><h3>Uhr · Schlaf & Ruhewerte</h3>
+    ${f('Schlafdauer', gm && gm.sleep)}${f('Schlafscore', gm && gm.score)}${f('Tiefschlaf / REM', gm && gm.phases)}
+    ${f('Ruhepuls', gm && gm.rhr)}${f('HRV (nachts)', gm && gm.hrv)}${f('Body Battery morgens', gm && gm.bb)}
+    ${gm ? '' : '<p class="mini">Wird gefüllt, sobald die Garmin-Daten ankommen.</p>'}</div>
+    <div class="panel"><h3>Brustgurt · Training</h3>
+    ${f('Ø / max. Puls', hr && hr.avgmax)}${f('Zeit in Zone 4–5', hr && hr.z45)}${f('Trainingslast (TRIMP)', hr && hr.trimp)}${f('Puls-Erholung nach 1 min', hr && hr.hrr)}
+    ${hr ? '' : '<p class="mini">Wird gefüllt, sobald die Polar-H10-Daten ankommen.</p>'}</div>`;
+  return h + '</div>';
+}
+
+function clickRec(e) {
+  const b = e.target.closest('[data-ra],[data-rate],[data-rt],[data-rk],[data-rf],[data-rm],[data-rd],[data-rr],[data-rl],[data-rp],[data-rw],[data-rwp]');
+  if (!b) return false;
+  const r = rec(), a = b.dataset.ra, ds = b.dataset;
+  const re = () => { Shell.sheet(rateSheet()); Shell.buzz(); return true; };
+  if (ds.rate) {
+    const s = pending(r).find(x => x.ref === ds.rate); if (!s) return false;
+    rd = { fixed: true, ref: s.ref, type: s.type, start: s.start, end: s.end, dur: Math.round((s.end - s.start) / 15) * 15, pain: null };
+    return re();
+  }
+  if (a === 'manual') { rd = { type: 'badminton', dur: 120, pain: null }; return re(); }
+  if (ds.rt) { rd.type = ds.rt; rd.dur = { badminton: 120, turnier: 360, gymOber: 75, gymBeine: 75, intervalle: 45, fahrrad: 60 }[rd.type]; return re(); }
+  if (ds.rk) { rd.kind = ds.rk; return re(); }
+  if (ds.rf) { rd.fmt = ds.rf; return re(); }
+  if (ds.rm) { rd.matches = +ds.rm; return re(); }
+  if (ds.rd) { rd.dur = +ds.rd; return re(); }
+  if (ds.rr) { rd.rpe = +ds.rr; return re(); }
+  if (ds.rl != null) { rd.legs = +ds.rl; return re(); }
+  if (ds.rp) {
+    if (ds.rp === 'none') rd.pain = [];
+    else { rd.pain = rd.pain || []; const i = rd.pain.indexOf(ds.rp); if (i >= 0) rd.pain.splice(i, 1); else rd.pain.push(ds.rp); }
+    return re();
+  }
+  if (a === 'rsave' && rd && rd.rpe) {
+    const { fixed, start, end, ...s } = rd;
+    addRecSession({ ...s, ref: rd.ref || ('man-' + Date.now()), pain: rd.pain || [] });
+    rd = null; Shell.closeSheet(); Shell.toast('Gespeichert – danke!');
+  }
+  else if (ds.rw) {
+    const day = recDay(r, today()), [k, v] = ds.rw.split(':');
+    day.wellDraft = day.wellDraft || {}; day.wellDraft[k] = +v; recSave(r);
+  }
+  else if (ds.rwp) {
+    const day = recDay(r, today()), w = day.wellDraft = day.wellDraft || {};
+    if (ds.rwp === 'none') w.pain = [];
+    else { w.pain = w.pain || []; const i = w.pain.indexOf(ds.rwp); if (i >= 0) w.pain.splice(i, 1); else w.pain.push(ds.rwp); }
+    recSave(r);
+  }
+  else if (a === 'wsave') { const day = recDay(r, today()); day.well = { ...day.wellDraft, pain: (day.wellDraft || {}).pain || [], at: nowMin() }; delete day.wellDraft; recSave(r); Shell.toast('Morgen-Check gespeichert'); }
+  else if (a === 'wredo') { const day = recDay(r, today()); day.wellDraft = { ...day.well }; delete day.well; recSave(r); }
+  else return false;
+  Shell.buzz(); Shell.refresh();
+  return true;
+}
+
+function glanceRec() {
+  const r = rec(), day = r.days[today()] || {};
+  if (pending(r).length) return { num: '!', hint: 'Einheit bewerten' };
+  if (!day.well && nowMin() >= 300) return { num: '?', hint: 'Morgen-Check offen' };
+  if (day.well) return { num: wellScore(day.well), hint: 'Tagesform von 25' };
+  return { num: '–', hint: 'Erholung & Schlaf' };
+}
+
+window.Modules.recovery = { render: renderRec, click: clickRec, glance: glanceRec };
+})();
