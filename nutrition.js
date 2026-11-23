@@ -190,8 +190,11 @@ function buildDay(st, now) {
   if (lateEnd && !after) ab.name = 'Abendessen (nach der Halle, fettarm)';
   slots.push(ab);
 
+  // Geplante Zeit merken. Ist sie vorbei und nichts eingetragen, wird erst gefragt („schon gegessen?“), bevor umgeplant wird.
+  slots.forEach(x => { x.t0 = x.t; });
+  const pend = x => x && !st.log[x.id] && now > x.t0;
   // Mittag verpasst und Training rückt näher → leicht vorher, groß danach
-  if (main && !main.flex && !after && !done('mi') && now >= s - PRE_BIG && now < e) {
+  if (main && !main.flex && !after && !done('mi') && !pend(mi) && now >= s - PRE_BIG && now < e) {
     mi.t = e + 30; mi.after = true; mi.swapped = true;
     mi.name = 'Große Mahlzeit nach dem Training';
     if (!done('ab')) {
@@ -200,13 +203,13 @@ function buildDay(st, now) {
     }
   }
   // Training vorbei, Mittag und Abend beide offen → zu einer Mahlzeit zusammenlegen (nicht zu viel vor dem Schlafen)
-  if (main && now >= e && !done('mi') && !done('ab')) { ab.merged = true; mi.t = Math.max(mi.t, e + 30); mi.after = true; mi.name = 'Große Mahlzeit nach dem Training'; }
+  if (main && now >= e && !done('mi') && !done('ab') && !pend(mi) && !pend(ab)) { ab.merged = true; mi.t = Math.max(mi.t, e + 30); mi.after = true; mi.name = 'Große Mahlzeit nach dem Training'; }
   // Sobald das Training vorbei ist, Vorher-Snacks, die nicht gegessen wurden, streichen
-  slots.forEach(x => { if (((x.kind === 'sn' && x.snack === 'pre') || x.kind === 'wa') && main && now >= e && !done(x.id)) x.merged = true; });
+  slots.forEach(x => { if (((x.kind === 'sn' && x.snack === 'pre') || x.kind === 'wa') && main && now >= e && !done(x.id) && !pend(x)) x.merged = true; });
   // Snack „vor oder direkt nach“ dem Gym: nie überfällig, rutscht notfalls direkt hinter das Training
   slots.forEach(x => { if (x.kind === 'sn' && x.snack !== 'pre' && !done(x.id)) x.t = now < s ? Math.max(x.t, now) : now < e ? e : now; });
-  slots.forEach(x => { if (x.kind === 'zw' && main && now > s - PRE_BIG && !done(x.id)) x.merged = true; });
-  if (main && now >= e && !done('mi') && ab.merged) mi.mergedDinner = true;
+  slots.forEach(x => { if (x.kind === 'zw' && main && now > s - PRE_BIG && !done(x.id) && !pend(x)) x.merged = true; });
+  if (main && now >= e && !done('mi') && ab.merged && !pend(mi)) mi.mergedDinner = true;
   if (mi.after && lateEnd != null && mi.t >= lateEnd) mi.noFat = true;
   if (ab.light === undefined && lateEnd != null && ab.t >= lateEnd) ab.noFat = true;
 
@@ -389,22 +392,50 @@ function trainingAsk(st, inSheet) {
   </div>`;
 }
 
-function bars(p) {
+const RING_COL = { kcal: '#ff5a36', C: '#ffb020', P: '#2fd4c0', F: '#a98bff' };
+function bars(p, st) {
   const { tpl, total, eaten } = p;
   const rows = [
-    ['Kalorien', eaten[0], total[0], Math.round(tpl.kcal * 0.97 / 10) * 10, Math.round(tpl.kcal * 1.03 / 10) * 10, 'kcal'],
-    ['Kohlenhydrate', eaten[2], total[2], tpl.C[0], tpl.C[1], 'g'],
-    ['Protein', eaten[1], total[1], tpl.P, tpl.P, 'g'],
-    ['Fett', eaten[3], total[3], tpl.F[0], tpl.F[1], 'g']
+    ['kcal', 'Kalorien', eaten[0], total[0], Math.round(tpl.kcal * 0.97 / 10) * 10, Math.round(tpl.kcal * 1.03 / 10) * 10, 'kcal'],
+    ['C', 'Kohlenhydrate', eaten[2], total[2], tpl.C[0], tpl.C[1], 'g'],
+    ['P', 'Protein', eaten[1], total[1], tpl.P, tpl.P, 'g'],
+    ['F', 'Fett', eaten[3], total[3], tpl.F[0], tpl.F[1], 'g']
   ];
-  return `<div class="panel"><h3>Heute</h3>${rows.map(([n, e, t, lo, hi, u]) => {
-    const max = hi * 1.15, w1 = Math.min(100, e / max * 100), w2 = Math.min(100, t / max * 100);
-    const ok = t >= lo * 0.95 && t <= hi * (n === 'Protein' ? 1.2 : 1.08);
-    const tgt = lo === hi ? `${lo}` : `${lo}–${hi}`;
-    return `<div class="bar"><div class="bar-h"><span>${n}</span><span><b>${Math.round(e)}</b> / ${tgt} ${u}</span></div>
-      <div class="track"><i class="plan" data-w="${w2}%" style="width:${w2}%"></i><i class="eat" data-w="${w1}%" style="width:${w1}%"></i><s style="left:${lo / max * 100}%;width:${(hi - lo) / max * 100 || 0.6}%"></s></div>
-      <div class="bar-f ${ok ? 'good' : 'warn'}">mit Plan: ${Math.round(t)} ${u}${ok ? '' : (t < lo ? ' · reicht heute nicht ganz' : ' · etwas drüber')}</div></div>`;
-  }).join('')}</div>`;
+  const R = [86, 68, 50, 32];
+  const arcs = rows.map(([k, , e, t, lo, hi], i) => {
+    const C = 2 * Math.PI * R[i], tgt = (lo + hi) / 2;
+    const fe = Math.min(1, e / tgt), ft = Math.min(1, t / tgt);
+    return `<circle cx="100" cy="100" r="${R[i]}" fill="none" stroke="#26262b" stroke-width="13"/>
+      <circle class="arc" cx="100" cy="100" r="${R[i]}" fill="none" stroke="${RING_COL[k]}" stroke-opacity=".28" stroke-width="13" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - ft)}" data-off="${C * (1 - ft)}" data-full="${C}"/>
+      <circle class="arc" cx="100" cy="100" r="${R[i]}" fill="none" stroke="${RING_COL[k]}" stroke-width="13" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - fe)}" data-off="${C * (1 - fe)}" data-full="${C}"/>`;
+  }).join('');
+  const legend = rows.map(([k, n, e, t, lo, hi, u]) => {
+    const ok = t >= lo * 0.95 && t <= hi * (k === 'P' ? 1.2 : 1.08);
+    const tg = lo === hi ? `${lo}` : `${lo}–${hi}`;
+    return `<div class="lg"><i style="background:${RING_COL[k]}"></i><div><b>${Math.round(e)}</b> / ${tg} ${u}<small>${n}</small><small class="${ok ? '' : 'warn'}">mit Plan ${Math.round(t)}${ok ? '' : t < lo ? ' · zu wenig' : ' · etwas drüber'}</small></div></div>`;
+  }).join('');
+  return `<div class="panel"><h3>Heute</h3>
+    <div class="dayring"><svg viewBox="0 0 200 200">${arcs}</svg><div class="legend">${legend}</div></div>
+    <p class="mini">Kräftig = gegessen · blass = was mit dem Rest des Plans dazukommt</p>
+    ${sources(st)}</div>`;
+}
+// Woher die Werte kommen: alles Eingetragene nach Lebensmittel zusammengefasst
+function sources(st) {
+  const agg = {};
+  const put = (name, m) => { const k = name.replace(/\s*\(.*?\)/g, ''); agg[k] = add(agg[k] || [0, 0, 0, 0], m); };
+  Object.values(st.log).forEach(l => {
+    if (!l.items || l.st === 'notyet' || l.st === 'skip') return;
+    const k = l.st === 'half' ? 0.5 : 1;
+    l.items.forEach(it => { if (!FOOD[it.f] || FOOD[it.f].free) return; put(FOOD[it.f].n, mac(it).map(v => v * k)); });
+  });
+  (st.extra || []).forEach(x => {
+    if (x.kind === 'list' && x.items) x.items.forEach(i => { const it = SN[i.id]; if (it) put(it.n, snM(it, i.q)); });
+    else put(x.txt ? x.txt + ' (grob)' : 'Snack (grob)', x.m);
+  });
+  const list = Object.entries(agg).sort((a, b) => b[1][0] - a[1][0]);
+  if (!list.length) return '<p class="mini">Noch nichts eingetragen.</p>';
+  return `<div class="lbl2">Woher es kommt</div><div class="src">${list.map(([n, m]) =>
+    `<div><span>${esc(n)}</span><b>${Math.round(m[0])}</b><em>${Math.round(m[1])} P · ${Math.round(m[2])} KH · ${Math.round(m[3])} F</em></div>`).join('')}</div>`;
 }
 
 function itemsHtml(items) {
@@ -494,12 +525,12 @@ function render() {
   }
 
   // Rückfrage: schon gegessen?
-  const overdue = p.slots.find(x => !st.log[x.id] && x.t < now - 30 && p.rem.includes(x));
+  const overdue = p.slots.find(x => !st.log[x.id] && x.t0 != null && x.t0 < now - 15 && x.t <= x.t0 + 1 && p.rem.includes(x));
   if (overdue) {
     h += `<div class="panel ask"><div class="ask-q">Hast du ${overdue.kind === 'fr' ? 'dein Frühstück' : 'die Mahlzeit „' + esc(overdue.name) + '“'} (${hm(overdue.t)}) schon gegessen?</div>
       <div class="ask-b"><button class="chip big" data-act="log" data-id="${overdue.id}" data-st="eaten">Ja, wie geplant</button>
       <button class="chip big" data-act="log" data-id="${overdue.id}" data-st="half">Nur die Hälfte</button>
-      <button class="chip big" data-act="notyet" data-id="${overdue.id}">Noch nicht</button>
+      <button class="chip big" data-act="notyet" data-id="${overdue.id}">Noch nicht – Tag anpassen</button>
       <button class="chip big" data-act="log" data-id="${overdue.id}" data-st="skip">Fällt aus</button></div></div>`;
   }
 
@@ -538,13 +569,13 @@ function render() {
   }
 
   h += `<button class="ghost" data-act="snack" style="width:100%;margin:0 0 12px">+ Snack eintragen</button>`;
-  h += bars(p);
+  h += bars(p, st);
 
   // Restlicher Tag
   if (p.rem.length > 1) {
     h += `<div class="panel"><h3>Danach</h3>${p.rem.slice(1).map(x => {
       const m = sumItems(x.items);
-      return `<div class="tl"><div class="tl-t">${hm(x.t)}</div><div class="tl-b"><b>${esc(x.name)}</b><span>${x.items.filter(i => !FOOD[i.f].free).map(label).join(', ')}</span><small>${Math.round(m[0])} kcal</small></div></div>`;
+      return `<div class="tl"><div class="tl-t">${hm(x.t)}</div><div class="tl-b"><b>${esc(x.name)}</b><span>${x.items.filter(i => !FOOD[i.f].free).map(label).join(', ')}</span><small>${Math.round(m[0])} kcal</small></div><button class="undo" data-act="log" data-id="${x.id}" data-st="eaten">✓ gegessen</button></div>`;
     }).join('')}</div>`;
   }
 
