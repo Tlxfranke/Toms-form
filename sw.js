@@ -1,6 +1,6 @@
 // Offline-Unterstützung: Seite zuerst frisch aus dem Netz (damit Updates sofort ankommen),
 // ohne Netz aus dem Zwischenspeicher. Bei jeder Änderung VERSION hochzählen.
-const VERSION = 'v12';
+const VERSION = 'v13';
 const CACHE = 'toms-form-' + VERSION;
 const SHELL = ['./', './index.html', './nutrition.js', './training.js', './manifest.webmanifest', './icons/apple-touch-icon.png', './icons/icon-192.png'];
 

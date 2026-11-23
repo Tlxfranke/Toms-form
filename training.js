@@ -60,7 +60,7 @@ const EX = {
   hipthrust: { n: 'Hip Thrust', g: 'Hüfte/Beinbeuger', step: 5 },
   adduktor: { n: 'Adduktoren', g: 'Hüfte/Beinbeuger', step: 5 },
   waden: { n: 'Wadenheben', g: 'Waden', step: 5 },
-  sprung: { n: 'Box Jumps (optional)', g: 'Explosiv', noKg: true, how: 'Optional, ganz am Anfang. Ausgeruht und maximal explosiv hochspringen, weich und leise landen, oben aufrichten, runtersteigen (nicht springen). Kiste so hoch, dass du sicher landest. 60–90 s Pause, nie bis zur Ermüdung.', vid: 'https://www.youtube.com/results?search_query=box+jump+technique+landing' },
+  sprung: { n: 'Box Jumps / Sprünge', g: 'Explosiv', noKg: true, how: 'Optional, ganz am Anfang. Ausgeruht und maximal explosiv hochspringen, weich und leise landen, oben aufrichten, runtersteigen (nicht springen). Kiste so hoch, dass du sicher landest. 60–90 s Pause, nie bis zur Ermüdung.', vid: 'https://www.youtube.com/results?search_query=box+jump+technique+landing' },
   core: { n: 'Core (Pallof / Anti-Rotation)', g: 'Core', step: 2.5 }
 };
 const GYM_TYPES = { ober: 'Oberkörper 1', ober2: 'Oberkörper 2', beine: 'Beine' };
@@ -68,13 +68,13 @@ const GYM_TYPES = { ober: 'Oberkörper 1', ober2: 'Oberkörper 2', beine: 'Beine
 const PLAN_RIR = { ober: 0, beine: 2 };
 const PLAN_NOTE = { beine: 'Nicht bis Versagen: 1–2 Wdh. im Tank. Mind. 48 h Abstand zu Punktspiel oder Turnier.' };
 const PLAN = {
-  beine: [['sprung', 3, 3, 3], ['spanish', 3, 30, 45], ['trapbar', 3, 4, 6], ['split', 3, 6, 8], ['wadenSitz', 3, 8, 12], ['copenhagen', 2, 20, 30]],
+  beine: [['spanish', 3, 30, 45], ['trapbar', 3, 4, 6], ['split', 3, 6, 8], ['wadenSitz', 3, 8, 12], ['copenhagen', 2, 20, 30]],
   ober: [['schulterKH', 2, 5, 7], ['latzieh', 2, 4, 6], ['brustpresse', 2, 4, 6], ['tbar', 2, 6, 8],
          ['seithebenKabel', 2, 6, 8], ['bizepsStuetze', 2, 6, 8], ['pushdown', 2, 6, 8], ['crunch', 2, 6, 8]]
 };
 const DEF_SEL = { ober: PLAN.ober.map(x => x[0]), ober2: [], beine: PLAN.beine.map(x => x[0]) };
 const target = ex => { for (const t in PLAN) { const f = PLAN[t].find(x => x[0] === ex); if (f) return { sets: f[1], lo: f[2], hi: f[3], rir: PLAN_RIR[t] }; } return null; };
-const PLAN_V = 5;
+const PLAN_V = 6;
 const U = E => E.sec ? ' s' : ' Wdh.';
 const rng = T => T.lo === T.hi ? `${T.lo}` : `${T.lo}–${T.hi}`;
 
