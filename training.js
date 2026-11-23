@@ -270,6 +270,37 @@ const WELL = [
   ['stimmung', 'Stimmung / Lust auf Training?', ['keine', 'wenig', 'okay', 'gut', 'richtig Bock']]
 ];
 
+const MOB = [
+  { id: 'ktw', n: 'Knee-to-Wall (Sprunggelenk)', dose: '2 × 10 langsam je Seite', how: 'Halber Ausfallschritt vor einer Wand, Fußspitze ca. 8–10 cm von der Wand. Vorderes Knie langsam gerade nach vorn zur Wand schieben – die Ferse bleibt komplett am Boden. Hebt sie ab, 1–2 cm näher an die Wand. Mehr Beweglichkeit im Sprunggelenk heißt: Das Knie muss im tiefen Ausfallschritt nicht ausweichen.', vid: 'https://www.youtube.com/results?search_query=knee+to+wall+ankle+mobility' },
+  { id: 'couch', n: 'Couch Stretch (Hüftbeuger, vorderer Oberschenkel)', dose: '2 × 45 s je Seite', how: 'Knie auf einer Matte in die Ecke zwischen Boden und Wand/Sofa, Schienbein zeigt senkrecht nach oben, vorderes Bein im 90°-Winkel. Gesäß der hinteren Seite fest anspannen, Rippen runter, Becken nach hinten kippen. Nur so weit aufrichten, wie das ohne Hohlkreuz geht.', vid: 'https://www.youtube.com/results?search_query=Tom+Morrison+couch+stretch' },
+  { id: 'ninety', n: '90/90 Hip Switches + Hold (Hüftrotation)', dose: '2 × 8 Wechsel + 30 s Hold je Seite', how: 'Sitzend, beide Beine im 90°-Winkel (vorn nach außen, hinten nach innen gedreht), Rücken gerade. Beide Knie gleichzeitig zur anderen Seite drehen, Fersen bleiben am Boden – anfangs mit den Händen hinten abstützen. Nach 8 Wechseln auf einer Seite bleiben und mit geradem Rücken aus der Hüfte über das vordere Schienbein lehnen.', vid: 'https://www.youtube.com/results?search_query=90+90+hip+switch+mobility' },
+  { id: 'addrock', n: 'Adductor Rock-Backs (Leiste)', dose: '2 × 10 + 20 s hinten halten je Seite', how: 'Vierfüßlerstand, ein Bein gestreckt zur Seite, ganze Fußsohle am Boden, Zehen nach vorn. Rücken neutral, Gesäß langsam Richtung Ferse schieben, bis es in der Leiste zieht, kurz halten, zurück. Nach der 10. Wdh. 20 s hinten bleiben.', vid: 'https://www.youtube.com/results?search_query=adductor+rock+back+mobility' },
+  { id: 'tspine', n: 'Thorakale Rotation im Vierfüßlerstand', dose: '2 × 8 je Seite', how: 'Vierfüßlerstand, Gesäß leicht Richtung Fersen (fixiert den unteren Rücken). Eine Hand an den Hinterkopf, Ellbogen nach unten zum anderen Arm, dann Ellbogen und Brust so weit wie möglich zur Decke drehen, Blick folgt. Die Drehung für Überkopfschläge kommt so aus der Brustwirbelsäule.', vid: 'https://www.youtube.com/results?search_query=quadruped+thoracic+rotation' }
+];
+const mob = () => load('tf-mob', { done: {}, ex: {} });
+const mobSave = m => save('tf-mob', m);
+function mobLast(m) { const d = Object.keys(m.done).sort(); return d.length ? d[d.length - 1] : null; }
+function mobDue(m) { const l = mobLast(m); return !l || l <= daysAgo(2); }
+// Nie direkt vor Badminton: Training in den nächsten 3 h?
+function badmintonSoon() {
+  try {
+    const t = window.Modules.essen && window.Modules.essen._today && window.Modules.essen._today();
+    const now = nowMin();
+    return (t || []).find(x => (x.type === 'badminton' || x.type === 'turnier') && !x.flex && x.start > now && x.start - now <= 180) || null;
+  } catch (e) { return null; }
+}
+function mobPanel() {
+  const m = mob(), t = today(), doneToday = !!m.done[t], due = mobDue(m), soon = badmintonSoon(), l = mobLast(m);
+  const exDone = (m.ex[t] || []);
+  const head = doneToday ? 'Heute erledigt ✓' : due ? (soon ? `Fällig – aber erst nach dem Badminton (${hm(soon.start)})` : 'Heute fällig') : `Nächstes Mal ${l === daysAgo(1) ? 'morgen' : 'bald'}`;
+  return `<div class="panel${due && !doneToday ? ' ask' : ''}"><h3>Mobility</h3>
+    <p class="mini"><b>${head}</b> · alle 2 Tage, ca. 12–15 min · ideal abends, an Ruhetagen oder direkt nach dem Training – nie direkt vor Badminton.</p>
+    ${MOB.map(x => `<div class="mob"><button class="supp${exDone.includes(x.id) || doneToday ? ' on' : ''}" data-mob="${x.id}"><i></i><span><b>${x.n}</b><small>${x.dose}</small></span></button>
+      <details class="how"><summary>So geht's</summary><p>${x.how}</p></details>
+      <a class="vid" href="${x.vid}" target="_blank" rel="noopener">▶ Video-Anleitung ansehen</a></div>`).join('')}
+    ${doneToday ? '<button class="undo" data-ra="mobundo">Rückgängig</button>' : `<button class="cta" data-ra="mobdone">Routine erledigt</button>`}
+    ${l ? `<p class="mini">Zuletzt: ${new Date(l + 'T12:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'short' })}</p>` : ''}</div>`;
+}
 const rec = () => load('tf-rec', { days: {} });
 const recSave = r => save('tf-rec', r);
 const recDay = (r, d) => r.days[d] = r.days[d] || { sess: [] };
@@ -349,6 +380,9 @@ function renderRec() {
       <button class="undo" data-ra="wredo">Neu ausfüllen</button></div>`;
   }
 
+  // Mobility
+  h += mobPanel();
+
   // 3) Belastung
   const l7 = [...Array(7)].map((_, i) => loadOf(r, daysAgo(i))).reduce((a, b) => a + b, 0);
   const l28 = [...Array(28)].map((_, i) => loadOf(r, daysAgo(i))).reduce((a, b) => a + b, 0);
@@ -370,6 +404,8 @@ function renderRec() {
 }
 
 function clickRec(e) {
+  const mb = e.target.closest('[data-mob]');
+  if (mb) { const m = mob(), t = today(); const l = m.ex[t] = m.ex[t] || []; const i = l.indexOf(mb.dataset.mob); if (i >= 0) l.splice(i, 1); else l.push(mb.dataset.mob); if (l.length === MOB.length) m.done[t] = nowMin(); mobSave(m); Shell.buzz(); Shell.refresh(); if (m.done[t] && l.length === MOB.length) Shell.toast('Mobility erledigt ✓'); return true; }
   const b = e.target.closest('[data-ra],[data-rate],[data-rt],[data-rk],[data-rf],[data-rm],[data-rd],[data-rr],[data-rl],[data-rp],[data-rw],[data-rwp]');
   if (!b) return false;
   const r = rec(), a = b.dataset.ra, ds = b.dataset;
@@ -407,6 +443,8 @@ function clickRec(e) {
     else { w.pain = w.pain || []; const i = w.pain.indexOf(ds.rwp); if (i >= 0) w.pain.splice(i, 1); else w.pain.push(ds.rwp); }
     recSave(r);
   }
+  else if (a === 'mobdone') { const m = mob(); m.done[today()] = nowMin(); m.ex[today()] = MOB.map(x => x.id); mobSave(m); Shell.toast('Mobility erledigt ✓'); }
+  else if (a === 'mobundo') { const m = mob(); delete m.done[today()]; delete m.ex[today()]; mobSave(m); }
   else if (a === 'wsave') { const day = recDay(r, today()); day.well = { ...day.wellDraft, pain: (day.wellDraft || {}).pain || [], at: nowMin() }; delete day.wellDraft; recSave(r); Shell.toast('Morgen-Check gespeichert'); }
   else if (a === 'wredo') { const day = recDay(r, today()); day.wellDraft = { ...day.well }; delete day.well; recSave(r); }
   else return false;
@@ -417,6 +455,7 @@ function clickRec(e) {
 function glanceRec() {
   const r = rec(), day = r.days[today()] || {};
   if (pending(r).length) return { num: '!', hint: 'Einheit bewerten' };
+  { const m = mob(); if (mobDue(m) && !m.done[today()] && !badmintonSoon() && nowMin() >= 17 * 60) return { num: '!', hint: 'Mobility fällig' }; }
   if (!day.well && nowMin() >= 300) return { num: '?', hint: 'Morgen-Check offen' };
   if (day.well) return { num: wellScore(day.well), hint: 'Tagesform von 25' };
   return { num: '–', hint: 'Erholung & Schlaf' };
