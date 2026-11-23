@@ -459,6 +459,7 @@ function sources(st) {
     if (l.custom && l.st === 'eaten') {
       const x = l.custom;
       if (x.kind === 'list' && x.items) x.items.forEach(i => { const it = SN[i.id]; if (it) put(it.n, snM(it, i.q)); });
+      else if (x.kind === 'alt' && x.items) x.items.forEach(i => put(i.n, i.m.map(v => v * i.g / 100)));
       else put(x.txt ? x.txt + ' (grob)' : 'Mahlzeit (grob)', x.m);
       return;
     }
@@ -536,6 +537,99 @@ document.addEventListener('input', e => {
   const sum = document.getElementById('snSum'); if (sum) sum.textContent = 'Zusammen: ' + mLine(snTotal());
 });
 
+
+// ---------- Alternative berechnen: was du da hast → wie viel davon ----------
+const FOOD_API = 'https://toms-form-sync.tlh-franke.workers.dev/food';
+const vorrat = () => load('tf-foods', {});
+const vorratSave = v => save('tf-foods', v);
+let altd = null;
+const altSum = () => altd.picks.reduce((a, x) => add(a, x.m.map(v => v * x.g / 100), 1), [0, 0, 0, 0]);
+// Mengen so wählen, dass Eiweiß, KH, Fett und kcal möglichst nah am Ziel der Mahlzeit liegen
+function altSolve() {
+  const t = altd.target, W = [2, 4, 1, 1]; // kcal (skaliert), Protein, KH, Fett
+  const tv = [t[0] / 10, t[1], t[2], t[3]];
+  const A = altd.picks.map(x => [x.m[0] / 1000, x.m[1] / 100, x.m[2] / 100, x.m[3] / 100]);
+  const g = altd.picks.map(x => x.g || 50);
+  for (let it = 0; it < 300; it++) {
+    for (let i = 0; i < g.length; i++) {
+      let num = 0, den = 0;
+      for (let j = 0; j < 4; j++) {
+        let r = -tv[j];
+        for (let k = 0; k < g.length; k++) if (k !== i) r += A[k][j] * g[k];
+        num += W[j] * A[i][j] * r; den += W[j] * A[i][j] * A[i][j];
+      }
+      g[i] = den > 0 ? Math.min(800, Math.max(0, -num / den)) : 0;
+    }
+  }
+  altd.picks.forEach((x, i) => { x.g = Math.round(g[i] / 5) * 5; });
+}
+const mL = m => `${Math.round(m[0])} kcal · ${Math.round(m[1])} g P · ${Math.round(m[2])} g KH · ${Math.round(m[3])} g F`;
+function altSheet() {
+  const v = vorrat(), t = altd.target;
+  const quick = [...Object.entries(v).map(([k, x]) => ({ key: 'v:' + k, n: x.n, b: x.b, m: x.m })), ...SNACKS.filter(x => x.unit === 'g').map(x => ({ key: 's:' + x.id, n: x.n, m: x.m }))];
+  const picked = k => altd.picks.some(x => x.key === k);
+  let h = `<h3>Alternative für „${esc(altd.name)}“</h3>
+    <p class="mini">Ziel dieser Mahlzeit: <b>${mL(t)}</b></p>
+    <div class="lbl2">Was hast du da?</div>
+    <div class="srch"><input id="altQ" class="txtin" type="search" enterkeyhint="search" placeholder="z. B. Hüttenkäse, Wraps, Joghurt" value="${esc(altd.q || '')}" autocomplete="off"><button class="ghost" data-act="altsearch">Suchen</button></div>`;
+  if (altd.loading) h += `<p class="mini">Suche …</p>`;
+  if (altd.err) h += `<p class="mini warn">${altd.err}</p>`;
+  if (altd.results && altd.results.length) h += `<div class="altres">${altd.results.map((x, i) => `<button class="altr${picked('o:' + x.id) ? ' on' : ''}" data-act="altadd" data-i="${i}"><b>${esc(x.n)}</b><small>${esc([x.b, x.q].filter(Boolean).join(' · '))}</small><em>pro 100 g: ${mL(x.m)}</em></button>`).join('')}</div>`;
+  if (quick.length) h += `<div class="lbl2">Schon bekannt</div><div class="chips">${quick.map(x => `<button class="chip${picked(x.key) ? ' on' : ''}" data-act="altquick" data-k="${x.key}">${esc(x.n)}</button>`).join('')}</div>`;
+  h += altd.manual ? `<div class="panel" style="margin-top:12px"><div class="lbl2">Werte von der Packung (pro 100 g)</div>
+      <input id="mN" class="txtin" placeholder="Name, z. B. Wraps" autocomplete="off">
+      <div class="mgrid"><label>kcal<input id="mK" class="snq" type="number" inputmode="decimal"></label><label>Eiweiß<input id="mP" class="snq" type="number" inputmode="decimal"></label><label>KH<input id="mC" class="snq" type="number" inputmode="decimal"></label><label>Fett<input id="mF" class="snq" type="number" inputmode="decimal"></label></div>
+      <button class="ghost" data-act="altmanualadd" style="width:100%">Hinzufügen</button></div>`
+    : `<button class="undo" data-act="altmanual" style="display:block;margin:8px auto 0">Nicht gefunden? Werte von der Packung eintragen</button>`;
+  if (altd.picks.length) {
+    const sm = altSum();
+    h += `<div class="lbl2">So viel davon essen</div><div class="snrows">${altd.picks.map((x, i) => `<div class="snrow"><div class="snn"><b>${esc(x.n)}</b><small id="altm-${i}">${mL(x.m.map(v => v * x.g / 100))}</small></div>
+      <div class="snq-w"><button data-act="altminus" data-i="${i}">−</button><input class="snq altg" data-i="${i}" type="number" inputmode="numeric" value="${x.g}"><span>g</span><button data-act="altplus" data-i="${i}">+</button></div></div>`).join('')}</div>
+      <div class="macro" id="altSum">Zusammen: ${mL(sm)}</div>
+      <p class="mini" id="altHint">${altHint(sm)}</p>
+      <div class="row2"><button class="ghost" data-act="altcalc">Neu berechnen</button><button class="ghost" data-act="altdrop">Leeren</button></div>
+      <button class="cta" data-act="altsave">So gegessen – eintragen</button>`;
+  } else h += `<p class="mini">Wähle 1–3 Lebensmittel, die du da hast. Die App rechnet aus, wie viel du von jedem essen solltest.</p>`;
+  return h;
+}
+function altHint(sm) {
+  const t = altd.target, d = i => Math.round(sm[i] - t[i]);
+  const parts = [];
+  if (Math.abs(d(1)) >= 8) parts.push(`Eiweiß ${d(1) > 0 ? '+' : ''}${d(1)} g`);
+  if (Math.abs(d(2)) >= 15) parts.push(`KH ${d(2) > 0 ? '+' : ''}${d(2)} g`);
+  if (Math.abs(d(3)) >= 8) parts.push(`Fett ${d(3) > 0 ? '+' : ''}${d(3)} g`);
+  return parts.length ? 'Abweichung zum Ziel: ' + parts.join(', ') + '. Ein weiteres Lebensmittel kann das ausgleichen.' : 'Passt gut zum Ziel.';
+}
+async function altSearch() {
+  const q = (altd.q || '').trim(); if (q.length < 2) return;
+  altd.loading = true; altd.err = ''; altd.results = []; Shell.sheet(altSheet());
+  try {
+    const r = await fetch(FOOD_API + '?q=' + encodeURIComponent(q));
+    const d = await r.json();
+    altd.results = d.items || [];
+    if (!altd.results.length) altd.err = 'Nichts gefunden – anderer Begriff oder Werte von der Packung eintragen.';
+  } catch (e) { altd.err = 'Suche gerade nicht erreichbar – Werte von der Packung eintragen.'; }
+  altd.loading = false; if (altd) Shell.sheet(altSheet());
+}
+function altAdd(x) {
+  if (altd.picks.some(p => p.key === x.key)) { altd.picks = altd.picks.filter(p => p.key !== x.key); return; }
+  if (altd.picks.length >= 3) { Shell.toast('Maximal 3 Lebensmittel'); return; }
+  altd.picks.push({ key: x.key, n: x.n, m: x.m, g: 50 });
+  if (x.save) { const v = vorrat(); v[x.save] = { n: x.n, b: x.b || '', m: x.m }; vorratSave(v); }
+  altSolve();
+}
+document.addEventListener('input', e => {
+  if (!altd) return;
+  const q = e.target.closest && e.target.closest('#altQ'); if (q) { altd.q = q.value; return; }
+  const el = e.target.closest && e.target.closest('#sheet .altg'); if (!el) return;
+  const i = +el.dataset.i, v = parseFloat(String(el.value).replace(',', '.'));
+  altd.picks[i].g = isNaN(v) ? 0 : Math.max(0, v);
+  const m = document.getElementById('altm-' + i); if (m) m.textContent = mL(altd.picks[i].m.map(x => x * altd.picks[i].g / 100));
+  const sm = altSum(); const s1 = document.getElementById('altSum'); if (s1) s1.textContent = 'Zusammen: ' + mL(sm);
+  const s2 = document.getElementById('altHint'); if (s2) s2.textContent = altHint(sm);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'altQ') { e.preventDefault(); altd.q = e.target.value; altSearch(); } });
+
 function render() {
   const st = dayState(), now = nowMin();
   const p = plan(st, now);
@@ -603,6 +697,7 @@ function render() {
       ${why.length ? `<p class="mini why">${why.join(' ')}</p>` : ''}
       <button class="cta" data-act="log" data-id="${cur.id}" data-st="eaten">Gegessen</button>
       <div class="row2"><button class="ghost" data-act="log" data-id="${cur.id}" data-st="half">Nur die Hälfte</button><button class="ghost" data-act="log" data-id="${cur.id}" data-st="skip">Fällt aus</button></div>
+      <button class="ghost" data-act="alt" data-id="${cur.id}" style="width:100%;margin-top:8px">Hab ich nicht da – Alternative berechnen</button>
       <button class="undo" data-act="other" data-id="${cur.id}" style="display:block;margin:10px auto 0">Etwas anderes gegessen</button>
     </div>`;
   }
@@ -643,6 +738,33 @@ function click(e) {
   if (!b) return false;
   const st = dayState(), act = b.dataset.act, now = nowMin();
   const ti = document.getElementById('snTxt'); if (snd && ti) snd.txt = ti.value;
+  if (act && act.startsWith('alt')) {
+    const qi = document.getElementById('altQ'); if (altd && qi) altd.q = qi.value;
+    if (act === 'alt') {
+      const p = plan(st, now), slot = p.rem.find(x => x.id === b.dataset.id); if (!slot) return true;
+      altd = { meal: slot.id, name: slot.name, target: sumItems(slot.items), picks: [], results: [], q: '' };
+    } else if (act === 'altsearch') { altSearch(); return true; }
+    else if (act === 'altadd') { const x = altd.results[+b.dataset.i]; altAdd({ key: 'o:' + x.id, n: x.n + (x.b ? ' (' + x.b + ')' : ''), b: x.b, m: x.m, save: x.id }); }
+    else if (act === 'altquick') { const k = b.dataset.k; const [t, id] = [k.slice(0, 1), k.slice(2)]; const x = t === 'v' ? vorrat()[id] : SN[id]; if (x) altAdd({ key: k, n: x.n, m: x.m }); }
+    else if (act === 'altmanual') altd.manual = true;
+    else if (act === 'altmanualadd') {
+      const g = id => parseFloat(String((document.getElementById(id) || {}).value || '').replace(',', '.'));
+      const n = ((document.getElementById('mN') || {}).value || '').trim(), m = [g('mK'), g('mP'), g('mC'), g('mF')];
+      if (!n || m.some(v => isNaN(v))) { Shell.toast('Name und alle 4 Werte eintragen'); return true; }
+      altd.manual = false; altAdd({ key: 'm:' + n, n, m, save: 'm-' + n.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-') });
+    }
+    else if (act === 'altminus' || act === 'altplus') { const x = altd.picks[+b.dataset.i]; x.g = Math.max(0, x.g + (act === 'altplus' ? 10 : -10)); }
+    else if (act === 'altcalc') altSolve();
+    else if (act === 'altdrop') altd.picks = [];
+    else if (act === 'altsave') {
+      const items = altd.picks.filter(x => x.g > 0).map(x => ({ n: x.n, g: x.g, m: x.m }));
+      if (!items.length) return true;
+      const m = altSum();
+      st.log[altd.meal] = { st: 'eaten', at: now, m, items: [], custom: { kind: 'alt', items, txt: items.map(x => `${x.g} g ${x.n}`).join(', '), kcal: Math.round(m[0]), m } };
+      store(st); altd = null; Shell.closeSheet(); Shell.toast('Eingetragen'); Shell.buzz(); Shell.refresh(); return true;
+    }
+    Shell.sheet(altSheet()); Shell.buzz(); return true;
+  }
   if (act === 'other') { snd = { sel: {}, txt: '', kcal: null, kind: 'herzhaft', meal: b.dataset.id }; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
   if (act === 'snack') { snd = { sel: {}, other: false, txt: '', kcal: null, kind: 'herzhaft' }; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
   if (act === 'snpick') { const id = b.dataset.v; if (snd.sel[id] != null) delete snd.sel[id]; else snd.sel[id] = SN[id].def; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
