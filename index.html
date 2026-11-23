@@ -50,7 +50,7 @@ body.open #home{transform:scale(.93);opacity:.35;filter:blur(2px)}
 .ring .c{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
 .ring .c b{font:800 38px/1 "Barlow Condensed"}
 .ring .c small{display:block;color:var(--mute);font-size:12px}
-.arc{transition:stroke-dashoffset 1.4s var(--spring)}
+.arc{transition:stroke-dashoffset 1.5s cubic-bezier(.22,1,.36,1)}
 .tag{display:inline-block;font-size:12px;font-weight:600;color:var(--acc);background:#ff5a361f;border-radius:99px;padding:3px 9px;margin-bottom:8px}
 .sec{margin:26px 4px 10px;font:700 15px Barlow;color:var(--mute)}
 .note{color:#5d5d63;font-size:13px;text-align:center;margin-top:26px}
@@ -142,7 +142,7 @@ body.open #fab{transform:scale(0)}
 .bar{margin:12px 0}
 .bar-h{display:flex;justify-content:space-between;font-size:14px;color:var(--mute)}.bar-h b{color:var(--ink)}
 .track{position:relative;height:10px;border-radius:5px;background:#26262b;margin:6px 0 3px;overflow:hidden}
-.track i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;transition:width .7s var(--soft)}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;transition:width 1.2s cubic-bezier(.22,1,.36,1)}
 .track .plan{background:#ff5a3640}.track .eat{background:var(--acc)}
 .track s{position:absolute;top:0;bottom:0;border-left:2px solid #fff9;border-right:2px solid #fff9;min-width:3px;text-decoration:none}
 .bar-f{font-size:12px;color:var(--mute)}.bar-f.warn{color:#ffb199}
@@ -230,7 +230,7 @@ grid.innerHTML=AREAS.map(a=>a.hero?`
   <button class="card hero" data-id="${a.id}">
     <div class="txt"><span class="tag">Beispiel</span><h2>${a.title}</h2><div class="hint">${a.hint}</div></div>
     <div class="ring"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="#2a2a2f" stroke-width="11"/>
-      <circle class="arc" cx="60" cy="60" r="52" fill="none" stroke="var(--acc)" stroke-width="11" stroke-linecap="round" stroke-dasharray="${R}" stroke-dashoffset="${R}"/></svg>
+      <circle class="arc" cx="60" cy="60" r="52" fill="none" stroke="var(--acc)" stroke-width="11" stroke-linecap="round" stroke-dasharray="${R}" stroke-dashoffset="${R*.3}" data-off="${R*.3}" data-full="${R}"/></svg>
       <div class="c"><div><b>–</b><small>Tagesform</small></div></div></div>
   </button>`:`
   <button class="card${a.wide?' wide':''}" data-id="${a.id}">
@@ -238,7 +238,17 @@ grid.innerHTML=AREAS.map(a=>a.hero?`
     <div class="num" id="num-${a.id}">–</div>
     <div class="lbl">${a.title}</div><div class="hint" id="hint-${a.id}">${a.hint}</div>
   </button>`).join('');
-requestAnimationFrame(()=>setTimeout(()=>{const arc=$('.arc');if(arc)arc.style.strokeDashoffset=R*.3},250));
+// Balken und Ringe laufen beim Öffnen einmal von 0 bis zum aktuellen Stand
+function fillIn(root,delay=160){
+  const els=[...root.querySelectorAll('[data-w],[data-off]')];
+  els.forEach(el=>{el.style.transition='none';if(el.dataset.w!=null)el.style.width='0%';else el.style.strokeDashoffset=el.dataset.full});
+  root.offsetHeight;
+  setTimeout(()=>els.forEach((el,i)=>{el.style.transition='';el.style.transitionDelay=(i*45)+'ms';
+    if(el.dataset.w!=null)el.style.width=el.dataset.w;else el.style.strokeDashoffset=el.dataset.off;
+    setTimeout(()=>{el.style.transitionDelay=''},1600)}),delay);
+}
+fillIn(grid,300);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!curId)fillIn(grid,250)});
 
 const tilesHtml=()=>`<h3>Schnell eintragen</h3><div class="tiles">${TILES.map(([k,t])=>`<button class="tile" data-t="${t}">${ico(k,'var(--acc)')}${t}</button>`).join('')}</div>`;
 const mods=window.Modules||{};
@@ -285,7 +295,8 @@ function openArea(card){
   det.offsetHeight;
   det.style.transition='clip-path .55s var(--spring)';det.style.clipPath='inset(0px 0px 0px 0px round 0px)';
   document.body.classList.add('open');
-  setTimeout(()=>{det.classList.add('ready');if(a.type==='data')shuffleBars()},120);
+  fillIn(det,0);
+  setTimeout(()=>{det.classList.add('ready');fillIn(det,180);if(a.type==='data')shuffleBars()},120);
 }
 function closeArea(){
   if(!from)return;
@@ -295,7 +306,7 @@ function closeArea(){
   det.style.transform='';
   det.style.clipPath=clipOf(from.getBoundingClientRect());
   document.body.classList.remove('open');
-  const done=()=>{det.className='';det.innerHTML='';from=null;curId=null};
+  const done=()=>{det.className='';det.innerHTML='';from=null;curId=null;fillIn(grid,0)};
   setTimeout(done,480);
 }
 

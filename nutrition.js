@@ -401,7 +401,7 @@ function bars(p) {
     const ok = t >= lo * 0.95 && t <= hi * (n === 'Protein' ? 1.2 : 1.08);
     const tgt = lo === hi ? `${lo}` : `${lo}–${hi}`;
     return `<div class="bar"><div class="bar-h"><span>${n}</span><span><b>${Math.round(e)}</b> / ${tgt} ${u}</span></div>
-      <div class="track"><i class="plan" style="width:${w2}%"></i><i class="eat" style="width:${w1}%"></i><s style="left:${lo / max * 100}%;width:${(hi - lo) / max * 100 || 0.6}%"></s></div>
+      <div class="track"><i class="plan" data-w="${w2}%" style="width:${w2}%"></i><i class="eat" data-w="${w1}%" style="width:${w1}%"></i><s style="left:${lo / max * 100}%;width:${(hi - lo) / max * 100 || 0.6}%"></s></div>
       <div class="bar-f ${ok ? 'good' : 'warn'}">mit Plan: ${Math.round(t)} ${u}${ok ? '' : (t < lo ? ' · reicht heute nicht ganz' : ' · etwas drüber')}</div></div>`;
   }).join('')}</div>`;
 }
