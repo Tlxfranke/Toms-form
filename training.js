@@ -348,16 +348,8 @@ function renderRec() {
     ${(day.sess || []).map(s => `<div class="tl"><div class="tl-t">${hm(s.at)}</div><div class="tl-b">${TYPES[s.type] || s.type}${s.kind ? ' · ' + KIND[s.kind] : ''}<small>${s.dur} min · RPE ${s.rpe}${s.fmt ? ' · ' + FMT[s.fmt] : ''}${s.pain && s.pain.length ? ' · ⚠︎ ' + s.pain.map(k => PAIN[k]).join(', ') : ''}</small></div></div>`).join('')}
     <button class="ghost" data-ra="manual" style="width:100%">Einheit nachtragen</button></div>`;
 
-  // 4) Uhr & Brustgurt (Datenfelder, die später automatisch gefüllt werden)
-  const gm = day.garmin, hr = day.hr;
-  const f = (lbl, v) => `<div class="tl"><div class="tl-b">${lbl}</div><div class="kv"><b>${v != null ? v : '–'}</b></div></div>`;
-  h += `<div class="panel"><h3>Uhr · Schlaf & Ruhewerte</h3>
-    ${f('Schlafdauer', gm && gm.sleep)}${f('Schlafscore', gm && gm.score)}${f('Tiefschlaf / REM', gm && gm.phases)}
-    ${f('Ruhepuls', gm && gm.rhr)}${f('HRV (nachts)', gm && gm.hrv)}${f('Body Battery morgens', gm && gm.bb)}
-    ${gm ? '' : '<p class="mini">Wird gefüllt, sobald die Garmin-Daten ankommen.</p>'}</div>
-    <div class="panel"><h3>Brustgurt · Training</h3>
-    ${f('Ø / max. Puls', hr && hr.avgmax)}${f('Zeit in Zone 4–5', hr && hr.z45)}${f('Trainingslast (TRIMP)', hr && hr.trimp)}${f('Puls-Erholung nach 1 min', hr && hr.hrr)}
-    ${hr ? '' : '<p class="mini">Wird gefüllt, sobald die Polar-H10-Daten ankommen.</p>'}</div>`;
+  // 4) Rohwerte von Uhr & Gurt stehen in der Datenzentrale
+  h += `<p class="note">Schlaf, HRV, Ruhepuls und Pulsdaten findest du in der Datenzentrale.</p>`;
   return h + '</div>';
 }
 
@@ -415,4 +407,93 @@ function glanceRec() {
 }
 
 window.Modules.recovery = { render: renderRec, click: clickRec, glance: glanceRec };
+
+// =====================================================================
+// DATEN – Zentrale: Gewicht (selbst eintragen) + alle Messwerte von Uhr & Gurt
+// =====================================================================
+const body = () => load('tf-body', { w: {} });
+const bodySave = b => save('tf-body', b);
+const avgW = (b, from, to) => { const v = Object.entries(b.w).filter(([d]) => d >= from && d <= to).map(([, x]) => x); return v.length ? v.reduce((a, c) => a + c, 0) / v.length : null; };
+const lastW = b => { const k = Object.keys(b.w).sort(); return k.length ? b.w[k[k.length - 1]] : null; };
+let wDraft = null;
+
+function weightChart(b) {
+  const days = [...Array(28)].map((_, i) => daysAgo(27 - i));
+  const pts = days.map((d, i) => [i, b.w[d]]).filter(p => p[1] != null);
+  if (pts.length < 2) return '';
+  const avg = days.map((d, i) => { const v = avgW(b, daysAgo(27 - i + 6), d); return v != null ? [i, v] : null; }).filter(Boolean);
+  const vals = pts.map(p => p[1]), lo = Math.min(...vals) - .3, hi = Math.max(...vals) + .3;
+  const X = i => 6 + i * (288 / 27), Y = v => 82 - (v - lo) / (hi - lo) * 74;
+  return `<svg class="wchart" viewBox="0 0 300 90" preserveAspectRatio="none">
+    <polyline points="${avg.map(p => X(p[0]) + ',' + Y(p[1])).join(' ')}" fill="none" stroke="var(--acc2)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    ${pts.map(p => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="2.6" fill="#8d8d93"/>`).join('')}</svg>
+    <div class="ax"><span>vor 4 Wochen</span><span>heute</span></div>`;
+}
+
+function renderData() {
+  const b = body(), r = rec(), t = today(), day = r.days[t] || {};
+  if (wDraft == null) wDraft = b.w[t] ?? lastW(b) ?? 75;
+  const wk = avgW(b, daysAgo(6), t), prev = avgW(b, daysAgo(13), daysAgo(7));
+  const n7 = Object.keys(b.w).filter(d => d >= daysAgo(6)).length;
+  const diff = wk != null && prev != null ? wk - prev : null;
+  let h = `<div class="panel"><h3>Gewicht</h3>
+    <div class="kpis"><div><b>${wk != null ? fmtKg(Math.round(wk * 10) / 10) : '–'}</b><small>Ø 7 Tage (${n7} ${n7 === 1 ? 'Wert' : 'Werte'})</small></div>
+      <div><b>${diff != null ? (diff > 0 ? '+' : '') + fmtKg(Math.round(diff * 10) / 10) : '–'}</b><small>kg zur Vorwoche</small></div>
+      <div><b>${diff != null && prev ? (diff > 0 ? '+' : '') + (diff / prev * 100).toFixed(1).replace('.', ',') : '–'}</b><small>% · Ziel −0,25 bis −0,5</small></div></div>
+    ${weightChart(b)}
+    <div class="lbl2">${b.w[t] != null ? 'Heute eingetragen – ändern?' : 'Heute morgens, nüchtern'}</div>
+    <div class="step w4"><button data-da="-1">−1</button><button data-da="-0.1">−,1</button><b>${fmtKg(wDraft)}<small> kg</small></b><button data-da="0.1">+,1</button><button data-da="1">+1</button></div>
+    <button class="cta rc" data-da="save">${b.w[t] != null ? 'Aktualisieren' : 'Gewicht speichern'}</button></div>`;
+
+  // Auf einen Blick
+  const gm = day.garmin || {}, well = day.well;
+  const l7 = [...Array(7)].map((_, i) => loadOf(r, daysAgo(i))).reduce((a, c) => a + c, 0);
+  const k = (v, lbl) => `<div><b>${v != null ? v : '–'}</b><small>${lbl}</small></div>`;
+  h += `<div class="panel"><h3>Heute auf einen Blick</h3><div class="kpis k6">
+    ${k(well ? wellScore(well) + '/25' : null, 'Tagesform (Gefühl)')}${k(gm.score, 'Schlafscore')}${k(gm.sleep, 'Schlafdauer')}
+    ${k(gm.hrv, 'HRV nachts')}${k(gm.rhr, 'Ruhepuls')}${k(gm.bb, 'Body Battery')}
+    ${k(gm.stress, 'Stress Ø')}${k(loadOf(r, t) || null, 'Belastung heute')}${k(l7 || null, 'Belastung 7 Tage')}</div></div>`;
+
+  // Schlaf & Erholung (Uhr) – 7 Tage
+  const days7 = [...Array(7)].map((_, i) => daysAgo(6 - i));
+  const wd = d => new Date(d + 'T12:00').toLocaleDateString('de-DE', { weekday: 'short' }).slice(0, 2);
+  const series = (key, max) => `<div class="bars7">${days7.map(d => { const v = ((r.days[d] || {}).garmin || {})[key]; return `<div><i style="height:${v ? Math.max(4, v / max * 100) : 3}%;${v ? '' : 'opacity:.25'}"></i><small>${wd(d)}</small></div>`; }).join('')}</div>`;
+  const anyG = days7.some(d => (r.days[d] || {}).garmin);
+  h += `<div class="panel"><h3>Schlaf · 7 Tage</h3>${series('scoreN', 100)}
+    <p class="mini">${anyG ? 'Schlafscore je Nacht' : 'Schlafdauer, Schlafscore, Tief- und REM-Schlaf – kommt von der Uhr.'}</p></div>
+    <div class="panel"><h3>Erholung · 7 Tage</h3>${series('hrvN', 120)}
+    <p class="mini">${anyG ? 'HRV je Nacht – das Band zeigt deinen Normalbereich' : 'HRV mit deinem Normalbereich, Ruhepuls, Body Battery und Stress – kommt von der Uhr.'}</p></div>`;
+
+  // Training (Gurt)
+  const hrS = days7.flatMap(d => ((r.days[d] || {}).sess || []).filter(s => s.hr).map(s => ({ ...s, d })));
+  h += `<div class="panel"><h3>Training · Brustgurt</h3>${hrS.length ? hrS.map(s => `<div class="tl"><div class="tl-t">${wd(s.d)}</div><div class="tl-b">${TYPES[s.type] || s.type}<small>Ø ${s.hr.avg} / max ${s.hr.max} bpm · Zone 4–5: ${s.hr.z45} min · ${s.hr.kcal} kcal</small></div></div>`).join('')
+    : '<p class="mini">Pro Einheit: Ø- und Maximalpuls, Zeit in den Pulszonen, kcal und Puls-Erholung – kommt vom Polar H10.</p>'}</div>`;
+
+  // Verbrauch
+  h += `<div class="panel"><h3>Verbrauch</h3>
+    <p class="mini">Hier steht nach 2–3 Wochen dein echter Tagesverbrauch – errechnet aus dem, was du gegessen hast, und deinem Gewichtstrend. Danach passe ich die kcal im Ernährungsplan an (kleines Defizit, an Badminton-Tagen volle Energie).</p></div>`;
+  return h;
+}
+
+function clickData(e) {
+  const btn = e.target.closest('[data-da]');
+  if (!btn) return false;
+  const v = btn.dataset.da;
+  if (v === 'save') { const b = body(); b.w[today()] = Math.round(wDraft * 10) / 10; bodySave(b); wDraft = null; Shell.toast('Gewicht gespeichert'); }
+  else wDraft = Math.max(30, Math.round((wDraft + parseFloat(v)) * 10) / 10);
+  Shell.buzz(); Shell.refresh();
+  return true;
+}
+
+function glanceData() {
+  const r = rec(), day = r.days[today()] || {};
+  const g = glanceRec();
+  let ring = null, num = '–';
+  if (day.well) { ring = wellScore(day.well) / 25; num = Math.round(ring * 100); }
+  const b = body(), wk = avgW(b, daysAgo(6), today());
+  const hint = b.w[today()] == null && nowMin() < 720 ? 'Gewicht heute noch eintragen' : (wk != null ? `Ø ${fmtKg(Math.round(wk * 10) / 10)} kg · 7 Tage` : g.hint === 'Einheit bewerten' ? 'Einheit bewerten' : 'Schlaf, Stress, Belastung, Gewicht');
+  return { num, hint, ring };
+}
+
+window.Modules.daten = { render: renderData, click: clickData, glance: glanceData };
 })();
