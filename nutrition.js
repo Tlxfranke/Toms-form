@@ -265,6 +265,7 @@ function plan(st, now) {
   const { tpl, ctx } = day;
   let eaten = [0, 0, 0, 0];
   Object.values(st.log).forEach(l => { if (l.m && l.st !== 'notyet') eaten = add(eaten, l.m, l.st === 'half' ? 0.5 : l.st === 'skip' ? 0 : 1); });
+  (st.extra || []).forEach(x => { eaten = add(eaten, x.m, 1); });
   const rem = day.slots.filter(x => !st.log[x.id] || st.log[x.id].st === 'notyet');
   rem.forEach(x => { x.items = compose(x, day, st.choice); x.te = Math.max(x.t, now); });
   rem.forEach(x => { if (x.mergedDinner && (tpl.P - total0(eaten, rem)[1]) > 25) x.items.push({ f: 'quark', g: 250, fill: 'p' }); });
@@ -410,6 +411,24 @@ function itemsHtml(items) {
   return `<ul class="ing">${items.filter(it => !FOOD[it.f].free || true).map(it => `<li class="${it.fill ? 'fill' : ''}"><span>${label(it)}</span>${it.fill ? `<em>${it.fill === 'p' ? 'statt Abendbrot' : 'Auffüller'}</em>` : ''}</li>`).join('')}</ul>`;
 }
 
+// ---------- Extra gegessen (+ Snack, Freitext) ----------
+// Grobe Schätzung über Größe und Art; Claude kann den Freitext später genauer auswerten.
+const SN_SIZE = [[150, 'Klein', 'z. B. Riegel, Obst'], [300, 'Mittel', 'z. B. Brötchen, Eis'], [500, 'Groß', 'z. B. Döner-Hälfte, Kuchen'], [800, 'Mahlzeit', 'z. B. Mensa, Pizza']];
+const SN_KIND = { suess: ['Süß', [.05, .55, .40]], herzhaft: ['Herzhaft', [.15, .40, .45]], protein: ['Eiweißreich', [.40, .35, .25]], getraenk: ['Getränk', [0, 1, 0]] };
+let snd = null;
+const snMacros = (kcal, kind) => { const [p, c, f] = SN_KIND[kind][1]; return [kcal, kcal * p / 4, kcal * c / 4, kcal * f / 9]; };
+function snackSheet() {
+  return `<h3>Extra gegessen</h3>
+    <div class="lbl2">Was war's?</div>
+    <input id="snTxt" class="txtin" type="text" placeholder="z. B. Croissant vom Bäcker" value="${esc(snd.txt || '')}" autocomplete="off" enterkeyhint="done">
+    <div class="lbl2">Wie viel ungefähr?</div>
+    <div class="chips">${SN_SIZE.map(([k, l, ex]) => `<button class="chip big sz${snd.kcal === k ? ' on' : ''}" data-act="snsz" data-v="${k}"><b>${l}</b><small>~${k} kcal · ${ex}</small></button>`).join('')}</div>
+    <div class="lbl2">Eher …</div>
+    <div class="chips">${Object.entries(SN_KIND).map(([k, [l]]) => `<button class="chip${snd.kind === k ? ' on' : ''}" data-act="snk" data-v="${k}">${l}</button>`).join('')}</div>
+    <button class="cta" data-act="snsave"${snd.kcal ? '' : ' disabled'}>Eintragen</button>
+    <p class="mini">Die restlichen Mahlzeiten von heute passen sich automatisch an.</p>`;
+}
+
 function render() {
   const st = dayState(), now = nowMin();
   const p = plan(st, now);
@@ -479,6 +498,7 @@ function render() {
     </div>`;
   }
 
+  h += `<button class="ghost" data-act="snack" style="width:100%;margin:0 0 12px">+ Snack / extra gegessen</button>`;
   h += bars(p);
 
   // Restlicher Tag
@@ -494,9 +514,11 @@ function render() {
 
   // Eingetragen
   const logged = p.slots.filter(x => st.log[x.id] && st.log[x.id].st !== 'notyet');
-  if (logged.length) {
+  const ex = st.extra || [];
+  if (logged.length || ex.length) {
     const lab = { eaten: 'gegessen', half: 'halbe Portion', skip: 'ausgefallen' };
-    h += `<div class="panel"><h3>Eingetragen</h3>${logged.map(x => `<div class="tl"><div class="tl-t">${hm(st.log[x.id].at)}</div><div class="tl-b"><b>${esc(x.name)}</b><span>${lab[st.log[x.id].st]}</span></div><button class="undo" data-act="undo" data-id="${x.id}">Rückgängig</button></div>`).join('')}</div>`;
+    h += `<div class="panel"><h3>Eingetragen</h3>${logged.map(x => `<div class="tl"><div class="tl-t">${hm(st.log[x.id].at)}</div><div class="tl-b"><b>${esc(x.name)}</b><span>${lab[st.log[x.id].st]}</span></div><button class="undo" data-act="undo" data-id="${x.id}">Rückgängig</button></div>`).join('')}
+      ${ex.map((x, i) => `<div class="tl"><div class="tl-t">${hm(x.at)}</div><div class="tl-b"><b>${esc(x.txt || 'Snack')}</b><span>extra · ~${x.kcal} kcal · ${SN_KIND[x.kind][0]}</span></div><button class="undo" data-act="snundo" data-i="${i}">Rückgängig</button></div>`).join('')}</div>`;
   }
   return h;
 }
@@ -511,6 +533,16 @@ function click(e) {
   const b = e.target.closest('[data-act]');
   if (!b) return false;
   const st = dayState(), act = b.dataset.act, now = nowMin();
+  const ti = document.getElementById('snTxt'); if (snd && ti) snd.txt = ti.value;
+  if (act === 'snack') { snd = { txt: '', kcal: null, kind: 'herzhaft' }; Shell.sheet(snackSheet()); Shell.buzz(); setTimeout(() => { const i = document.getElementById('snTxt'); if (i) i.focus(); }, 450); return true; }
+  if (act === 'snsz') { snd.kcal = +b.dataset.v; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
+  if (act === 'snk') { snd.kind = b.dataset.v; Shell.sheet(snackSheet()); Shell.buzz(); return true; }
+  if (act === 'snsave') {
+    if (!snd || !snd.kcal) return true;
+    st.extra = st.extra || []; st.extra.push({ at: now, txt: (snd.txt || '').trim().slice(0, 80), kcal: snd.kcal, kind: snd.kind, m: snMacros(snd.kcal, snd.kind) });
+    store(st); snd = null; Shell.closeSheet(); Shell.toast('Snack eingetragen'); Shell.buzz(); Shell.refresh(); return true;
+  }
+  if (act === 'snundo') { (st.extra || []).splice(+b.dataset.i, 1); store(st); Shell.buzz(); Shell.refresh(); return true; }
   if (act === 'tt') { draft.type = b.dataset.v; draft.dur = TT_DUR[draft.type]; if (draft.type !== 'badminton') draft.rad = false; draft.start = FLEX.includes(draft.type) ? 'flex' : (draft.start === 'flex' ? null : draft.start); }
   else if (act === 'td') draft.dur = +b.dataset.v;
   else if (act === 'trad') draft.rad = b.dataset.v === '1';
