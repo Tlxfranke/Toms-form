@@ -23,6 +23,16 @@ const chip = (attr, v, label, on) => `<button class="chip${on ? ' on' : ''}" ${a
 // =====================================================================
 // step = Schritt am Gewichts-Regler, bw = Körpergewichtsübung (kg = Zusatzgewicht), noKg = nur Wiederholungen
 const EX = {
+  // Toms Oberkörper 1 (Dienstag)
+  schulterKH: { n: 'Schulterdrücken KH', g: 'Schulter', step: 2 },
+  latzieh: { n: 'Latziehen', g: 'Rücken', step: 5 },
+  brustpresse: { n: 'Brustpresse liegend (Griffe zusammen)', g: 'Brust', step: 5 },
+  tbar: { n: 'T-Bar Rudern brustgestützt', g: 'Rücken', step: 2.5, extra: 'Teilwdh. Trapez (bis Versagen)' },
+  seithebenKabel: { n: 'Seitheben Kabel einarmig', g: 'Schulter', step: 1 },
+  bizepsStuetze: { n: 'Bizepscurls mit Armstütze', g: 'Arme', step: 1 },
+  pushdown: { n: 'Trizeps Pushdowns', g: 'Arme', step: 2.5 },
+  crunch: { n: 'Ab-Crunch Maschine', g: 'Core', step: 5 },
+  // weitere Auswahl
   bank: { n: 'Bankdrücken', g: 'Brust', step: 2.5 },
   schraeg: { n: 'Schrägbank (KH)', g: 'Brust', step: 2 },
   klimmzug: { n: 'Klimmzüge', g: 'Rücken', step: 2.5, bw: true },
@@ -46,13 +56,35 @@ const EX = {
   sprung: { n: 'Box Jumps / Sprünge', g: 'Explosiv', noKg: true },
   core: { n: 'Core (Pallof / Anti-Rotation)', g: 'Core', step: 2.5 }
 };
-const GYM_TYPES = { ober: 'Oberkörper', beine: 'Beine' };
-const DEF_SEL = {
-  ober: ['bank', 'klimmzug', 'rudern', 'schulter', 'facepull', 'trizeps', 'bizeps'],
-  beine: ['kniebeuge', 'rdl', 'split', 'beuger', 'waden', 'sprung', 'core']
+const GYM_TYPES = { ober: 'Oberkörper 1', ober2: 'Oberkörper 2', beine: 'Beine' };
+// Zielvorgaben: [Übung, Sätze, Wdh. von, Wdh. bis] – alles bis Versagen (0–1 Wdh. Reserve)
+const PLAN = {
+  ober: [['schulterKH', 2, 5, 7], ['latzieh', 2, 4, 6], ['brustpresse', 2, 4, 6], ['tbar', 2, 6, 8],
+         ['seithebenKabel', 2, 6, 8], ['bizepsStuetze', 2, 6, 8], ['pushdown', 2, 6, 8], ['crunch', 2, 6, 8]]
 };
+const DEF_SEL = { ober: PLAN.ober.map(x => x[0]), ober2: [], beine: [] };
+const target = ex => { for (const t in PLAN) { const f = PLAN[t].find(x => x[0] === ex); if (f) return { sets: f[1], lo: f[2], hi: f[3] }; } return null; };
+const PLAN_V = 2;
 
-const gym = () => load('tf-gym', { sel: DEF_SEL, sessions: [] });
+const gym = () => {
+  const g = load('tf-gym', { sel: DEF_SEL, sessions: [] });
+  if (g.v !== PLAN_V) { g.sel = { ...DEF_SEL }; g.v = PLAN_V; save('tf-gym', g); }
+  return g;
+};
+// Doppelte Progression: alle Zielsätze am oberen Ende → beim nächsten Mal mehr Gewicht
+function lastSession(g, ex) {
+  for (let i = g.sessions.length - 1; i >= 0; i--) { const s = g.sessions[i]; if (s.done || s.d !== today()) { const a = s.sets.filter(x => x.ex === ex); if (a.length) return a; } }
+  return null;
+}
+function advice(g, ex) {
+  const T = target(ex), last = lastSession(g, ex);
+  if (!T || !last) return null;
+  const top = Math.max(...last.map(x => x.kg));
+  const work = last.filter(x => x.kg === top);
+  if (work.length >= T.sets && work.every(x => x.r >= T.hi)) return { up: true, kg: top + (EX[ex].step || 2.5), msg: `Letztes Mal überall ${T.hi}+ Wdh. → heute mit mehr Gewicht` };
+  if (work.some(x => x.r < T.lo)) return { up: false, kg: top, msg: `Letztes Mal unter ${T.lo} Wdh. → Gewicht halten` };
+  return { up: false, kg: top, msg: `Gewicht halten, Ziel: ${T.hi} Wdh. in allen Sätzen` };
+}
 const gymSave = g => save('tf-gym', g);
 const active = g => g.sessions.find(s => !s.done && s.d === today()) || null;
 
@@ -71,19 +103,24 @@ let draft = null; // aktueller Satz im Regler
 function logger(g, ex) {
   const E = EX[ex], ses = active(g), done = ses ? ses.sets.filter(x => x.ex === ex) : [];
   const l = lastSet(g, ex);
-  if (!draft || draft.ex !== ex) draft = { ex, kg: l ? l.kg : (E.bw || E.noKg ? 0 : 20), r: l ? l.r : 8, rir: l ? (l.rir ?? 2) : 2 };
+  const T = target(ex), adv = done.length ? null : advice(g, ex);
+  if (!draft || draft.ex !== ex) draft = { ex, kg: adv ? adv.kg : (l ? l.kg : (E.bw || E.noKg ? 0 : 20)), r: T ? T.lo : (l ? l.r : 8), rir: T ? 0 : (l ? (l.rir ?? 2) : 2), px: 0 };
   const kgRow = E.noKg ? '' : `
     <div class="lbl2">${E.bw ? 'Zusatzgewicht' : 'Gewicht'}</div>
     <div class="step"><button data-ga="kg-" aria-label="weniger">−</button><b>${fmtKg(draft.kg)}<small> kg</small></b><button data-ga="kg+" aria-label="mehr">+</button></div>`;
   return `<div class="gym"><h3>${E.n}</h3>
+    ${T ? `<p class="mini"><b>Ziel: ${T.sets} × ${T.lo}–${T.hi} Wdh.</b> bis Versagen (0–1 im Tank)</p>` : ''}
+    ${adv ? `<p class="why">${adv.up ? '⬆︎ ' : ''}${adv.msg}</p>` : ''}
     <p class="mini">${l ? `Letztes Mal: ${E.noKg ? '' : fmtKg(l.kg) + ' kg × '}${l.r} Wdh. · RIR ${l.rir >= 4 ? '4+' : l.rir}` : 'Erster Eintrag für diese Übung'}</p>
     ${kgRow}
     <div class="lbl2">Wiederholungen</div>
     <div class="step"><button data-ga="r-" aria-label="weniger">−</button><b>${draft.r}</b><button data-ga="r+" aria-label="mehr">+</button></div>
+    ${E.extra ? `<div class="lbl2">${E.extra}</div>
+    <div class="step"><button data-ga="px-" aria-label="weniger">−</button><b>${draft.px}</b><button data-ga="px+" aria-label="mehr">+</button></div>` : ''}
     <div class="lbl2">Wie viele Wdh. wären noch gegangen? (RIR)</div>
     <div class="chips">${[0, 1, 2, 3, 4].map(v => chip('data-grir', v, v === 4 ? '4+' : v, draft.rir === v)).join('')}</div>
     <button class="cta" data-ga="addset">Satz ${done.length + 1} speichern</button>
-    ${done.length ? `<div class="sets">${done.map((x, i) => `<div class="tl"><div class="tl-t">${i + 1}</div><div class="tl-b">${E.noKg ? '' : fmtKg(x.kg) + ' kg × '}${x.r} Wdh.<small>RIR ${x.rir >= 4 ? '4+' : x.rir}</small></div>${i === done.length - 1 ? '<button class="undo" data-ga="undoset">Rückgängig</button>' : ''}</div>`).join('')}</div>` : ''}
+    ${done.length ? `<div class="sets">${done.map((x, i) => `<div class="tl"><div class="tl-t">${i + 1}</div><div class="tl-b">${E.noKg ? '' : fmtKg(x.kg) + ' kg × '}${x.r} Wdh.${x.px ? ` + ${x.px} Teilwdh.` : ''}<small>RIR ${x.rir >= 4 ? '4+' : x.rir}</small></div>${i === done.length - 1 ? '<button class="undo" data-ga="undoset">Rückgängig</button>' : ''}</div>`).join('')}</div>` : ''}
     <div class="row2"><button class="ghost" data-ga="close">Fertig mit ${E.n}</button></div></div>`;
 }
 
@@ -99,7 +136,7 @@ function selSheet(g, t) {
   return `<div class="gym"><h3>Übungen · ${GYM_TYPES[t]}</h3>
     <div class="seg2">${Object.entries(GYM_TYPES).map(([k, v]) => chip('data-gseltab', k, v, k === t)).join('')}</div>
     <div class="chips">${ids.map(id => chip('data-gsel', id, EX[id].n, (g.sel[t] || []).includes(id))).join('')}</div>
-    <p class="mini">Deine echten Übungen trage ich ein, sobald du mir deinen Gym-Plan gibst.</p>
+    <p class="mini">Oberkörper 1 ist dein Dienstags-Plan. Beine und Oberkörper 2 trage ich ein, sobald du sie mir schickst.</p>
     <button class="cta" data-ga="close">Fertig</button></div>`;
 }
 let selTab = 'ober';
@@ -114,7 +151,7 @@ function weekSets(g) {
 function gymTodayType() {
   try {
     const t = window.Modules.essen && window.Modules.essen._today && window.Modules.essen._today();
-    if (t) { if (t.some(x => x.type === 'gymBeine')) return 'beine'; if (t.some(x => x.type === 'gymOber')) return 'ober'; }
+    if (t) { if (t.some(x => x.type === 'gymBeine')) return 'beine'; if (t.some(x => x.type === 'gymOber')) return new Date().getDay() === 2 ? 'ober' : null; }
   } catch (e) {}
   return null;
 }
@@ -128,9 +165,11 @@ function renderGym() {
     h += `<div class="panel now"><div class="now-l">Einheit läuft · seit ${hm(ses.start)}</div><div class="now-t">${GYM_TYPES[ses.t]}</div>
       ${[...ids, ...extra].map(id => {
         const s = ses.sets.filter(x => x.ex === id), E = EX[id];
-        const sum = s.length ? `${s.length} ${s.length === 1 ? 'Satz' : 'Sätze'} · ${E.noKg ? '' : fmtKg(s[s.length - 1].kg) + ' kg × '}${s[s.length - 1].r}` : 'noch offen';
+        const T = target(id);
+        const sum = s.length ? `${s.length}${T ? '/' + T.sets : ''} ${s.length === 1 && !T ? 'Satz' : 'Sätze'} · ${E.noKg ? '' : fmtKg(s[s.length - 1].kg) + ' kg × '}${s[s.length - 1].r}` : (T ? `${T.sets} × ${T.lo}–${T.hi} Wdh.` : 'noch offen');
         return `<button class="supp${s.length ? ' on' : ''}" data-gex="${id}"><i></i><span><b>${E.n}</b><small>${sum}</small></span></button>`;
       }).join('')}
+      ${ids.length ? '' : '<p class="mini">Für diesen Tag ist noch kein Plan hinterlegt – unten bei „Übungen anpassen“ auswählen.</p>'}
       <button class="cta" data-ga="finish"${ses.sets.length ? '' : ' disabled'}>Einheit abschließen</button>
       <button class="undo" data-ga="cancel">Einheit verwerfen</button></div>`;
   } else {
@@ -141,7 +180,7 @@ function renderGym() {
   }
 
   // Kraftentwicklung je Übung: bestes e1RM letzte 14 Tage vs. davor (4 Wochen)
-  const rows = [...new Set([...(g.sel.ober || []), ...(g.sel.beine || [])])].map(id => {
+  const rows = [...new Set(Object.values(g.sel).flat())].map(id => {
     const E = EX[id], now = bestIn(g, id, daysAgo(13)), before = bestIn(g, id, daysAgo(41), daysAgo(13)), all = bestIn(g, id);
     if (all == null) return null;
     const val = E.noKg ? `${all} Wdh.` : `${fmtKg(Math.round(all * 2) / 2)} kg`;
@@ -168,8 +207,9 @@ function clickGym(e) {
   else if (b.dataset.gex) { draft = null; Shell.sheet(logger(g, b.dataset.gex)); Shell.buzz(); return true; }
   else if (b.dataset.grir != null) { draft.rir = +b.dataset.grir; Shell.sheet(logger(g, draft.ex)); Shell.buzz(); return true; }
   else if (a === 'kg-' || a === 'kg+') { const st = EX[draft.ex].step || 2.5; draft.kg = Math.max(0, draft.kg + (a === 'kg+' ? st : -st)); Shell.sheet(logger(g, draft.ex)); Shell.buzz(); return true; }
+  else if (a === 'px-' || a === 'px+') { draft.px = Math.max(0, draft.px + (a === 'px+' ? 1 : -1)); Shell.sheet(logger(g, draft.ex)); Shell.buzz(); return true; }
   else if (a === 'r-' || a === 'r+') { draft.r = Math.max(1, draft.r + (a === 'r+' ? 1 : -1)); Shell.sheet(logger(g, draft.ex)); Shell.buzz(); return true; }
-  else if (a === 'addset' && ses) { ses.sets.push({ ex: draft.ex, kg: draft.kg, r: draft.r, rir: draft.rir }); gymSave(g); Shell.sheet(logger(g, draft.ex)); Shell.toast('Satz gespeichert'); }
+  else if (a === 'addset' && ses) { ses.sets.push({ ex: draft.ex, kg: draft.kg, r: draft.r, rir: draft.rir, ...(draft.px ? { px: draft.px } : {}) }); gymSave(g); Shell.sheet(logger(g, draft.ex)); Shell.toast('Satz gespeichert'); }
   else if (a === 'undoset' && ses) { for (let i = ses.sets.length - 1; i >= 0; i--) if (ses.sets[i].ex === draft.ex) { ses.sets.splice(i, 1); break; } gymSave(g); Shell.sheet(logger(g, draft.ex)); }
   else if (a === 'close') { draft = null; Shell.closeSheet(); }
   else if (a === 'finish') { Shell.sheet(finishSheet()); Shell.buzz(); return true; }
