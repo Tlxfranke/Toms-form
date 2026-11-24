@@ -121,7 +121,7 @@ function logger(g, ex) {
   const T = target(ex), adv = done.length ? null : advice(g, ex);
   if (!draft || draft.ex !== ex) draft = { ex, kg: adv ? adv.kg : (l ? l.kg : (E.bw || E.noKg ? 0 : 20)), r: T ? T.lo : (l ? l.r : 8), rir: T ? T.rir : (l ? (l.rir ?? 2) : 2), px: 0 };
   const kgRow = E.noKg ? '' : `
-    <div class="lbl2">${E.bw ? 'Zusatzgewicht' : E.kh ? 'Gewicht pro Hantel' : ex === 'split' ? 'Gewicht (bei Kurzhanteln: pro Hantel)' : 'Gewicht'}</div>
+    <div class="lbl2">${E.bw ? 'Zusatzgewicht' : E.kh ? 'Gewicht pro Hantel' : ex === 'brustpresse' ? 'Gewicht gesamt (Scheiben beider Seiten)' : ex === 'tbar' ? 'Gewicht gesamt (alle Scheiben)' : ex === 'split' ? 'Gewicht (bei Kurzhanteln: pro Hantel)' : 'Gewicht'}</div>
     <div class="step"><button data-ga="kg-" aria-label="weniger">−</button><b>${fmtKg(draft.kg)}<small> kg</small></b><button data-ga="kg+" aria-label="mehr">+</button></div>`;
   return `<div class="gym"><h3>${E.n}</h3>
     ${T ? `<p class="mini"><b>Ziel: ${T.sets} × ${rng(T)}${U(E)}</b> ${T.rir ? 'explosiv hoch, kontrolliert runter, ca. 2 im Tank – nicht bis Versagen' : 'bis Versagen (0–1 im Tank)'}</p>` : ''}
