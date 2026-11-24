@@ -24,7 +24,7 @@ const chip = (attr, v, label, on) => `<button class="chip${on ? ' on' : ''}" ${a
 // step = Schritt am Gewichts-Regler, bw = Körpergewichtsübung (kg = Zusatzgewicht), noKg = nur Wiederholungen
 const EX = {
   // Toms Oberkörper 1 (Dienstag)
-  schulterKH: { n: 'Schulterdrücken KH', g: 'Schulter', step: 2 },
+  schulterKH: { kh: true, n: 'Schulterdrücken KH', g: 'Schulter', step: 2 },
   latzieh: { n: 'Latziehen', g: 'Rücken', step: 5 },
   brustpresse: { n: 'Brustpresse liegend (Griffe zusammen)', g: 'Brust', step: 5 },
   tbar: { n: 'T-Bar Rudern brustgestützt', g: 'Rücken', step: 2.5, extra: 'Teilwdh. Trapez (bis Versagen)' },
@@ -42,7 +42,7 @@ const EX = {
   sldl: { n: 'Straight Leg Deadlift (SLDL)', g: 'Hüfte/Beinbeuger', step: 2.5, how: 'Langhantel oder Kurzhanteln, Füße hüftbreit, Knie fast gestreckt (nur leicht gebeugt, bleiben so). Hüfte nach hinten schieben, Rücken gerade, Hantel nah am Bein 2–3 s runter, bis die Beinbeuger deutlich ziehen. Dann explosiv die Hüfte nach vorn bringen und oben das Gesäß anspannen. 1–2 im Tank, 2 min Pause.', vid: 'https://www.youtube.com/results?search_query=straight+leg+deadlift+technique' },
   // weitere Auswahl
   bank: { n: 'Bankdrücken', g: 'Brust', step: 2.5 },
-  schraeg: { n: 'Schrägbank (KH)', g: 'Brust', step: 2 },
+  schraeg: { kh: true, n: 'Schrägbank (KH)', g: 'Brust', step: 2 },
   klimmzug: { n: 'Klimmzüge', g: 'Rücken', step: 2.5, bw: true },
   latzug: { n: 'Latzug', g: 'Rücken', step: 5 },
   rudern: { n: 'Rudern', g: 'Rücken', step: 2.5 },
@@ -121,7 +121,7 @@ function logger(g, ex) {
   const T = target(ex), adv = done.length ? null : advice(g, ex);
   if (!draft || draft.ex !== ex) draft = { ex, kg: adv ? adv.kg : (l ? l.kg : (E.bw || E.noKg ? 0 : 20)), r: T ? T.lo : (l ? l.r : 8), rir: T ? T.rir : (l ? (l.rir ?? 2) : 2), px: 0 };
   const kgRow = E.noKg ? '' : `
-    <div class="lbl2">${E.bw ? 'Zusatzgewicht' : 'Gewicht'}</div>
+    <div class="lbl2">${E.bw ? 'Zusatzgewicht' : E.kh ? 'Gewicht pro Hantel' : ex === 'split' ? 'Gewicht (bei Kurzhanteln: pro Hantel)' : 'Gewicht'}</div>
     <div class="step"><button data-ga="kg-" aria-label="weniger">−</button><b>${fmtKg(draft.kg)}<small> kg</small></b><button data-ga="kg+" aria-label="mehr">+</button></div>`;
   return `<div class="gym"><h3>${E.n}</h3>
     ${T ? `<p class="mini"><b>Ziel: ${T.sets} × ${rng(T)}${U(E)}</b> ${T.rir ? 'explosiv hoch, kontrolliert runter, ca. 2 im Tank – nicht bis Versagen' : 'bis Versagen (0–1 im Tank)'}</p>` : ''}
