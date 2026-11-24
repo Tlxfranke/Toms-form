@@ -18,11 +18,27 @@ const setStatus = (state, msg) => { status = { state, at: Date.now(), msg: msg |
 Storage.prototype.setItem = function (k, v) {
   rawSet.call(this, k, v);
   // Erst nach dem ersten Abgleich als Änderung zählen – sonst würde ein frisches Gerät mit seinen Start-Einstellungen die Cloud überschreiben
-  if (this === localStorage && isData(k) && pulled) { const c = cfg(); c.changed = Date.now(); saveCfg(c); schedule(); }
+  if (this === localStorage && isData(k) && k !== 'tf-gate' && pulled) { const fast = updateGate(); const c = cfg(); c.changed = Date.now(); saveCfg(c); schedule(fast); }
 };
-function schedule() { clearTimeout(timer); timer = setTimeout(push, 2500); }
+function schedule(fast) { clearTimeout(timer); timer = setTimeout(push, fast ? 400 : 2500); }
+
+// Status für die Handy-Sperre: Gewicht + Morgen-Supplemente, Mobility – wird mitsynchronisiert
+const pad = n => String(n).padStart(2, '0');
+const dkey = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const MORNING_SUPPS = ['kreatin', 'd3k2'];
+function gateNow() {
+  const t = dkey(), j = k => { try { return JSON.parse(rawGet.call(localStorage, k)) || {}; } catch (e) { return {}; } };
+  const body = j('tf-body'), day = j('tf-day-' + t), mob = j('tf-mob');
+  return { d: t, weight: !!(body.w && body.w[t] != null), supps: MORNING_SUPPS.every(id => day.supps && day.supps[id]), mobility: !!(mob.done && mob.done[t]) };
+}
+function updateGate() {
+  const g = JSON.stringify(gateNow()), old = rawGet.call(localStorage, 'tf-gate');
+  if (g !== old) { rawSet.call(localStorage, 'tf-gate', g); return true; }
+  return false;
+}
 
 function collect() {
+  updateGate();
   const data = {};
   for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (isData(k)) data[k] = rawGet.call(localStorage, k); }
   return data;

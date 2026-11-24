@@ -281,7 +281,10 @@ const MOB = [
 const mob = () => load('tf-mob', { done: {}, ex: {} });
 const mobSave = m => save('tf-mob', m);
 function mobLast(m) { const d = Object.keys(m.done).sort(); return d.length ? d[d.length - 1] : null; }
-function mobDue(m) { const l = mobLast(m); return !l || l <= daysAgo(2); }
+// Feste Mobility-Tage ohne Badminton: Di, Do, Sa, So (ab 21:30 sperrt der Kurzbefehl das Handy, bis sie erledigt ist)
+const MOB_DAYS = [2, 4, 6, 0];
+const mobDay = () => MOB_DAYS.includes(new Date().getDay());
+function mobDue(m) { return mobDay() && !m.done[today()]; }
 // Nie direkt vor Badminton: Training in den nächsten 3 h?
 function badmintonSoon() {
   try {
@@ -293,9 +296,10 @@ function badmintonSoon() {
 function mobPanel() {
   const m = mob(), t = today(), doneToday = !!m.done[t], due = mobDue(m), soon = badmintonSoon(), l = mobLast(m);
   const exDone = (m.ex[t] || []);
-  const head = doneToday ? 'Heute erledigt ✓' : due ? (soon ? `Fällig – aber erst nach dem Badminton (${hm(soon.start)})` : 'Heute fällig') : `Nächstes Mal ${l === daysAgo(1) ? 'morgen' : 'bald'}`;
+  const nextD = (() => { for (let i = 1; i <= 7; i++) { const d = new Date(); d.setDate(d.getDate() + i); if (MOB_DAYS.includes(d.getDay())) return i === 1 ? 'morgen' : d.toLocaleDateString('de-DE', { weekday: 'long' }); } return 'bald'; })();
+  const head = doneToday ? 'Heute erledigt ✓' : due ? (soon ? `Fällig – aber erst nach dem Badminton (${hm(soon.start)})` : 'Heute fällig – ab 21:30 ist das Handy gesperrt, bis sie abgehakt ist') : `Nächstes Mal ${nextD}`;
   return `<div class="panel${due && !doneToday ? ' ask' : ''}"><h3>Mobility</h3>
-    <p class="mini"><b>${head}</b> · alle 2 Tage, ca. 12–15 min · ideal abends, an Ruhetagen oder direkt nach dem Training – nie direkt vor Badminton.</p>
+    <p class="mini"><b>${head}</b> · Di, Do, Sa, So · ca. 12–15 min · ideal abends oder direkt nach dem Training – nie direkt vor Badminton.</p>
     ${MOB.map(x => `<div class="mob"><button class="supp${exDone.includes(x.id) || doneToday ? ' on' : ''}" data-mob="${x.id}"><i></i><span><b>${x.n}</b><small>${x.dose}</small></span></button>
       <details class="how"><summary>So geht's</summary><p>${x.how}</p></details>
       <a class="vid" href="${x.vid}" target="_blank" rel="noopener">▶ Video-Anleitung ansehen</a></div>`).join('')}
