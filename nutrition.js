@@ -309,6 +309,26 @@ function plan(st, now) {
   const Cmid = (tpl.C[0] + tpl.C[1]) / 2, Fmid = (tpl.F[0] + tpl.F[1]) / 2;
   const isCarbFill = it => it.fill === 'c';
 
+  // Eiweiß: Tagesziel ist eine Untergrenze. Fehlt etwas, erst die Eiweißquellen der restlichen Mahlzeiten vergrößern,
+  // dann einen Eiweiß-Auffüller dazu (Quark/Skyr abends, sonst Whey). So steht das ganze Eiweiß schon im Vorschlag.
+  const PSTEP = { quark: 50, skyrA: 50, frischkaese: 50, haehnchen: 25, hack: 25, lachs: 25, whey: 10 };
+  const PCAP = { quark: 500, skyrA: 500, frischkaese: 400, haehnchen: 300, hack: 300, lachs: 250, whey: 60 };
+  for (let i = 0; i < 40; i++) {
+    if (tpl.P - total()[1] < 8) break;
+    let did = false;
+    for (const x of rem) {
+      const it = x.items.find(it => PSTEP[it.f] && it.g != null && it.g < PCAP[it.f]);
+      if (it) { it.g += PSTEP[it.f]; did = true; break; }
+    }
+    if (!did) {
+      const x = rem.slice().reverse().find(x => x.items.filter(it => it.fill === 'p').length < 2);
+      if (!x) break;
+      const dairy = x.items.some(it => ['quark', 'skyrA'].includes(it.f));
+      const evening = x.kind === 'ab' || x.te >= SLEEP - 180;
+      x.items.push(evening && !dairy ? { f: 'quark', g: 250, fill: 'p' } : { f: 'whey', g: 30, fill: 'p' });
+    }
+  }
+
   // Kohlenhydrate: erst Portionen anpassen, dann Auffüller (Datteln, Obst, Maiswaffeln)
   for (let i = 0; i < 60; i++) {
     const gap = Cmid - total()[2];
@@ -479,7 +499,7 @@ function sources(st) {
 }
 
 function itemsHtml(items) {
-  return `<ul class="ing">${items.filter(it => !FOOD[it.f].free || true).map(it => `<li class="${it.fill ? 'fill' : ''}"><span>${label(it)}</span>${it.fill ? `<em>${it.fill === 'p' ? 'statt Abendbrot' : 'Auffüller'}</em>` : ''}</li>`).join('')}</ul>`;
+  return `<ul class="ing">${items.filter(it => !FOOD[it.f].free || true).map(it => `<li class="${it.fill ? 'fill' : ''}"><span>${label(it)}</span>${it.fill ? `<em>${it.fill === 'p' ? 'für dein Eiweiß-Ziel' : 'Auffüller'}</em>` : ''}</li>`).join('')}</ul>`;
 }
 
 // ---------- Snacks: feste Liste (Werte pro 100 g von den Packungen), wird nach und nach länger ----------
