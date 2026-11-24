@@ -460,6 +460,7 @@ function sources(st) {
       const x = l.custom;
       if (x.kind === 'list' && x.items) x.items.forEach(i => { const it = SN[i.id]; if (it) put(it.n, snM(it, i.q)); });
       else if (x.kind === 'alt' && x.items) x.items.forEach(i => put(i.n, i.m.map(v => v * i.g / 100)));
+      else if (x.kind === 'macro') put(x.txt || 'Eigene Angabe', x.m);
       else put(x.txt ? x.txt + ' (grob)' : 'Mahlzeit (grob)', x.m);
       return;
     }
@@ -520,6 +521,14 @@ function snackSheet() {
     <div class="macro" id="snSum">Zusammen: ${mLine(snTotal())}</div>`;
   }
   h += `<button class="cta" data-act="snsave"${ids.length ? '' : ' disabled'}>Eintragen</button>`;
+  if (snd.meal) {
+    const mv = snd.mac || {};
+    h += `<div class="panel" style="margin-top:14px"><div class="lbl2">Makros selbst eintragen (z. B. von der Packung oder aus einer App)</div>
+      <input id="mmN" class="txtin" placeholder="Was war's? (optional)" value="${esc(mv.n || '')}" autocomplete="off">
+      <div class="mgrid"><label>kcal<input id="mmK" class="snq" type="number" inputmode="decimal" value="${mv.k ?? ''}" placeholder="auto"></label><label>Eiweiß g<input id="mmP" class="snq" type="number" inputmode="decimal" value="${mv.p ?? ''}"></label><label>KH g<input id="mmC" class="snq" type="number" inputmode="decimal" value="${mv.c ?? ''}"></label><label>Fett g<input id="mmF" class="snq" type="number" inputmode="decimal" value="${mv.f ?? ''}"></label></div>
+      <p class="mini">kcal leer lassen = wird aus Eiweiß, KH und Fett berechnet.</p>
+      <button class="ghost" data-act="snmacro" style="width:100%">Mit diesen Makros eintragen</button></div>`;
+  }
   h += `<div class="panel" style="margin-top:14px"><div class="lbl2">Oder frei eintragen (kommt danach auf die Liste)</div>
     <input id="snTxt" class="txtin" type="text" placeholder="z. B. Croissant vom Bäcker" value="${esc(snd.txt || '')}" autocomplete="off" enterkeyhint="done">
     <div class="lbl2">Ungefähr</div><div class="chips">${(snd.meal ? [[300, 'Klein'], [600, 'Mittel'], [900, 'Groß'], [1200, 'Sehr groß']] : SN_SIZE).map(([k, l]) => `<button class="chip${snd.kcal === k ? ' on' : ''}" data-act="snsz" data-v="${k}">${l} ~${k} kcal</button>`).join('')}</div>
@@ -529,7 +538,7 @@ function snackSheet() {
 }
 // Mengen-Eingabe live übernehmen, ohne das Feld neu zu zeichnen
 document.addEventListener('input', e => {
-  const el = e.target.closest && e.target.closest('#sheet .snq');
+  const el = e.target.closest && e.target.closest('#sheet .snq[data-id]');
   if (!el || !snd) return;
   const id = el.dataset.id, v = parseFloat(String(el.value).replace(',', '.'));
   snd.sel[id] = isNaN(v) ? 0 : Math.max(0, v);
@@ -738,6 +747,18 @@ function click(e) {
   if (!b) return false;
   const st = dayState(), act = b.dataset.act, now = nowMin();
   const ti = document.getElementById('snTxt'); if (snd && ti) snd.txt = ti.value;
+  if (snd && document.getElementById('mmP')) {
+    const gv = id => { const v = document.getElementById(id).value; return v === '' ? undefined : parseFloat(String(v).replace(',', '.')); };
+    snd.mac = { n: document.getElementById('mmN').value, k: gv('mmK'), p: gv('mmP'), c: gv('mmC'), f: gv('mmF') };
+  }
+  if (act === 'snmacro') {
+    const mv = snd.mac || {}, P = mv.p, C = mv.c, F = mv.f;
+    if ([P, C, F].some(v => v === undefined || isNaN(v) || v < 0)) { Shell.toast('Eiweiß, KH und Fett eintragen'); return true; }
+    const K = mv.k !== undefined && !isNaN(mv.k) ? mv.k : Math.round(P * 4 + C * 4 + F * 9);
+    const m = [K, P, C, F], txt = (mv.n || '').trim().slice(0, 80);
+    st.log[snd.meal] = { st: 'eaten', at: now, m, items: [], custom: { kind: 'macro', txt, kcal: Math.round(K), m } };
+    store(st); snd = null; Shell.closeSheet(); Shell.toast('Mahlzeit eingetragen'); Shell.buzz(); Shell.refresh(); return true;
+  }
   if (act && act.startsWith('alt')) {
     const qi = document.getElementById('altQ'); if (altd && qi) altd.q = qi.value;
     if (act === 'alt') {
