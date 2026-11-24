@@ -33,12 +33,13 @@ const EX = {
   pushdown: { n: 'Trizeps Pushdowns', g: 'Arme', step: 2.5 },
   crunch: { n: 'Ab-Crunch Maschine', g: 'Core', step: 5 },
   // Übungen aus dem Drive-Dokument (nur zur Auswahl, kein fester Plan)
-  spanish: { n: 'Spanish Squat Hold', g: 'Beine', noKg: true, sec: true, how: 'Starkes Band an einem Rack auf Kniehöhe, Band direkt in die Kniekehlen. Zurücklehnen, Schienbeine senkrecht, ca. 60° Kniewinkel, Oberkörper aufrecht. Kniekehlen gegen das Band drücken und den Oberschenkel maximal anspannen. Leichtes Ziehen an der Sehne ist okay (max. 3 von 10), stechender Schmerz nicht. 60–90 s Pause.', vid: 'https://www.youtube.com/results?search_query=E3+Rehab+spanish+squat' },
+  spanish: { n: 'Spanish Squat Hold / Wandsitzen', g: 'Beine', noKg: true, sec: true, how: 'Spanish Squat: starkes Band auf Kniehöhe am Rack, Band in die Kniekehlen, zurücklehnen, Schienbeine senkrecht, ca. 60° Kniewinkel, Oberkörper aufrecht, Oberschenkel maximal anspannen. Ohne Band: Wandsitzen – Rücken an der Wand, Knie ca. 90°, Knie über den Fersen, gleichmäßig über den ganzen Fuß drücken. Leichtes Ziehen an der Sehne ist okay (max. 3 von 10), stechender Schmerz nicht. 60–90 s Pause.', vid: 'https://www.youtube.com/results?search_query=E3+Rehab+spanish+squat' },
   trapbar: { n: 'Trap Bar Deadlift', g: 'Hüfte/Beinbeuger', step: 5, how: 'Mittig in die Trap Bar, Füße hüftbreit, hohe Griffe schonen Rücken und Knie. Brust raus, Rücken gerade, vor jeder Wdh. Spannung aufbauen. Explosiv hochdrücken, oben Gesäß anspannen, 2 s kontrolliert ablassen. 1–2 Wdh. im Tank. 2–3 min Pause.', vid: 'https://www.youtube.com/results?search_query=trap+bar+deadlift+technique' },
   defLunge: { n: 'Deficit Reverse Lunge (je Bein)', g: 'Beine', step: 2 },
   copenhagen: { n: 'Copenhagen Plank (je Seite)', g: 'Adduktoren', noKg: true, sec: true, how: 'Seitlich auf dem Unterarm, Ellbogen unter der Schulter. Oberes Bein auf die Bank: zum Einstieg mit dem Knie, später mit dem Knöchel. Becken hochdrücken, Körper eine gerade Linie, nicht durchhängen oder kippen. Sekunden je Seite eintragen. Geht es noch nicht: Adduktoren-Maschine.', vid: 'https://www.youtube.com/results?search_query=E3+Rehab+copenhagen+plank' },
-  wadenSitz: { n: 'Wadenheben sitzend', g: 'Waden', step: 5, how: 'An der sitzenden Wadenmaschine: ganz tief in die Dehnung, unten 2 s halten, ohne Schwung hoch, oben kurz anspannen. Nicht federn, das belastet nur die Sehne. 1–2 im Tank, 60 s Pause.', vid: 'https://www.youtube.com/results?search_query=seated+calf+raise+soleus+technique' },
+  wadenSitz: { n: 'Wadenheben', g: 'Waden', step: 5, how: 'Sitzend an der Maschine (Soleus) oder stehend an Maschine/Stufe. Ganz tief in die Dehnung, unten 2 s halten, dann explosiv hoch auf die Zehenspitzen, oben kurz halten. Nicht federn – das belastet nur die Sehne. 1–2 im Tank, 60 s Pause.', vid: 'https://www.youtube.com/results?search_query=calf+raise+technique+soleus' },
   wadenSteh: { n: 'Wadenheben stehend (Supersatz)', g: 'Waden', step: 5 },
+  sldl: { n: 'Straight Leg Deadlift (SLDL)', g: 'Hüfte/Beinbeuger', step: 2.5, how: 'Langhantel oder Kurzhanteln, Füße hüftbreit, Knie fast gestreckt (nur leicht gebeugt, bleiben so). Hüfte nach hinten schieben, Rücken gerade, Hantel nah am Bein 2–3 s runter, bis die Beinbeuger deutlich ziehen. Dann explosiv die Hüfte nach vorn bringen und oben das Gesäß anspannen. 1–2 im Tank, 2 min Pause.', vid: 'https://www.youtube.com/results?search_query=straight+leg+deadlift+technique' },
   // weitere Auswahl
   bank: { n: 'Bankdrücken', g: 'Brust', step: 2.5 },
   schraeg: { n: 'Schrägbank (KH)', g: 'Brust', step: 2 },
@@ -53,11 +54,11 @@ const EX = {
   trizeps: { n: 'Trizepsdrücken', g: 'Arme', step: 2.5 },
   kniebeuge: { n: 'Kniebeuge', g: 'Beine', step: 2.5 },
   presse: { n: 'Beinpresse', g: 'Beine', step: 5 },
-  split: { n: 'Bulgarian Split Squat (je Bein)', g: 'Beine', step: 2, how: 'Hinterer Fuß auf der Bank, vorderer Fuß so weit vorn, dass das Schienbein unten fast senkrecht steht. 3 s runter, unten kurz halten, kräftig über den ganzen Fuß hoch. Vorderes Knie zeigt zur 2.–3. Zehe, knickt nicht nach innen. Erst ein Bein, dann das andere, Wdh. je Bein eintragen. 1–2 im Tank, 90 s Pause.', vid: 'https://www.youtube.com/results?search_query=bulgarian+split+squat+technique' },
+  split: { n: 'Bulgarian Split Squat (je Bein)', g: 'Beine', step: 2, how: 'Hinterer Fuß auf der Bank, vorderer Fuß so weit vorn, dass das Schienbein unten fast senkrecht steht. 2–3 s kontrolliert runter, unten kurz stoppen, dann explosiv über den ganzen Fuß hochdrücken. Vorderes Knie zeigt zur 2.–3. Zehe, knickt nicht nach innen. Wdh. je Bein eintragen. 1–2 im Tank – sobald die Wdh. langsam werden, Satz beenden. 90 s Pause.', vid: 'https://www.youtube.com/results?search_query=bulgarian+split+squat+technique' },
   ausfall: { n: 'Ausfallschritte', g: 'Beine', step: 2 },
   rdl: { n: 'Rumänisches Kreuzheben', g: 'Hüfte/Beinbeuger', step: 2.5 },
   beuger: { n: 'Beinbeuger', g: 'Hüfte/Beinbeuger', step: 2.5 },
-  hipthrust: { n: 'Hip Thrust', g: 'Hüfte/Beinbeuger', step: 5 },
+  hipthrust: { n: 'Hip Thrust', g: 'Hüfte/Beinbeuger', step: 5, how: 'Oberer Rücken an der Bank (Unterkante Schulterblätter), Langhantel mit Polster auf der Hüfte, Füße so, dass die Schienbeine oben senkrecht stehen. Kinn leicht zur Brust, Rippen unten. Explosiv hochdrücken, oben 1 s das Gesäß fest anspannen (kein Hohlkreuz), kontrolliert runter. 1–2 im Tank, 90 s Pause.', vid: 'https://www.youtube.com/results?search_query=hip+thrust+technique' },
   adduktor: { n: 'Adduktoren', g: 'Hüfte/Beinbeuger', step: 5 },
   waden: { n: 'Wadenheben', g: 'Waden', step: 5 },
   sprung: { n: 'Box Jumps / Sprünge', g: 'Explosiv', noKg: true, how: 'Optional, ganz am Anfang. Ausgeruht und maximal explosiv hochspringen, weich und leise landen, oben aufrichten, runtersteigen (nicht springen). Kiste so hoch, dass du sicher landest. 60–90 s Pause, nie bis zur Ermüdung.', vid: 'https://www.youtube.com/results?search_query=box+jump+technique+landing' },
@@ -66,15 +67,15 @@ const EX = {
 const GYM_TYPES = { ober: 'Oberkörper 1', ober2: 'Oberkörper 2', beine: 'Beine' };
 // Zielvorgaben: [Übung, Sätze, Wdh./Sek. von, bis]; RIR-Vorgabe je Tag
 const PLAN_RIR = { ober: 0, beine: 2 };
-const PLAN_NOTE = { beine: 'Nicht bis Versagen: 1–2 Wdh. im Tank. Mind. 48 h Abstand zu Punktspiel oder Turnier.' };
+const PLAN_NOTE = { beine: 'Fokus Explosivität: hoch schnell, runter kontrolliert. Nicht bis Versagen – 1–2 Wdh. im Tank, Satz beenden, wenn es langsam wird. Mind. 48 h Abstand zu Punktspiel oder Turnier.' };
 const PLAN = {
-  beine: [['spanish', 3, 30, 45], ['trapbar', 3, 4, 6], ['split', 3, 6, 8], ['wadenSitz', 3, 8, 12], ['copenhagen', 2, 20, 30]],
+  beine: [['spanish', 3, 30, 45], ['split', 3, 6, 8], ['sldl', 3, 6, 8], ['hipthrust', 3, 6, 8], ['copenhagen', 2, 20, 30], ['wadenSitz', 3, 10, 12]],
   ober: [['schulterKH', 2, 5, 7], ['latzieh', 2, 4, 6], ['brustpresse', 2, 4, 6], ['tbar', 2, 6, 8],
          ['seithebenKabel', 2, 6, 8], ['bizepsStuetze', 2, 6, 8], ['pushdown', 2, 6, 8], ['crunch', 2, 6, 8]]
 };
 const DEF_SEL = { ober: PLAN.ober.map(x => x[0]), ober2: [], beine: PLAN.beine.map(x => x[0]) };
 const target = ex => { for (const t in PLAN) { const f = PLAN[t].find(x => x[0] === ex); if (f) return { sets: f[1], lo: f[2], hi: f[3], rir: PLAN_RIR[t] }; } return null; };
-const PLAN_V = 6;
+const PLAN_V = 7;
 const U = E => E.sec ? ' s' : ' Wdh.';
 const rng = T => T.lo === T.hi ? `${T.lo}` : `${T.lo}–${T.hi}`;
 
@@ -123,7 +124,7 @@ function logger(g, ex) {
     <div class="lbl2">${E.bw ? 'Zusatzgewicht' : 'Gewicht'}</div>
     <div class="step"><button data-ga="kg-" aria-label="weniger">−</button><b>${fmtKg(draft.kg)}<small> kg</small></b><button data-ga="kg+" aria-label="mehr">+</button></div>`;
   return `<div class="gym"><h3>${E.n}</h3>
-    ${T ? `<p class="mini"><b>Ziel: ${T.sets} × ${rng(T)}${U(E)}</b> ${T.rir ? 'kontrolliert, ca. 2 im Tank – nicht bis Versagen' : 'bis Versagen (0–1 im Tank)'}</p>` : ''}
+    ${T ? `<p class="mini"><b>Ziel: ${T.sets} × ${rng(T)}${U(E)}</b> ${T.rir ? 'explosiv hoch, kontrolliert runter, ca. 2 im Tank – nicht bis Versagen' : 'bis Versagen (0–1 im Tank)'}</p>` : ''}
     ${E.how ? `<details class="how"><summary>So geht's</summary><p>${E.how}</p></details>` : ''}
     ${E.vid ? `<a class="vid" href="${E.vid}" target="_blank" rel="noopener">▶ Video-Anleitung ansehen</a>` : ''}
     ${adv ? `<p class="why">${adv.up ? '⬆︎ ' : ''}${adv.msg}</p>` : ''}
