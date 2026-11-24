@@ -193,26 +193,57 @@ function buildDay(st, now) {
   if (lateEnd && !after) ab.name = 'Abendessen (nach der Halle, fettarm)';
   slots.push(ab);
 
-  // Geplante Zeit merken. Ist sie vorbei und nichts eingetragen, wird erst gefragt („schon gegessen?“), bevor umgeplant wird.
   slots.forEach(x => { x.t0 = x.t; });
-  const pend = x => x && !st.log[x.id] && now > x.t0;
-  // Mittag verpasst und Training rückt näher → leicht vorher, groß danach
-  if (main && !main.flex && !after && !done('mi') && !pend(mi) && now >= s - PRE_BIG && now < e) {
+  const fr = slots.find(x => x.id === 'fr');
+  const eatenAt = id => done(id) ? (st.log[id].at || now) : null;
+
+  // ---- Feste Regeln: Reihenfolge Porridge → warme Mahlzeit (Mittagessen) → Abendessen zum Auffüllen ----
+  // Vorgeschlagen wird immer die nächste noch offene Mahlzeit, egal wie spät es ist. Die Uhrzeit verschiebt nur.
+  // 1) Porridge offen → er ist jetzt dran, alles andere rückt nach hinten
+  if (!done('fr')) fr.t = Math.min(fr.t0, now);
+  const frEnd = done('fr') ? eatenAt('fr') : Math.max(fr.t, now);
+  if (!done('mi') && !mi.after) mi.t = Math.max(mi.t0, frEnd + 150);
+
+  // 2) Ausnahme Training: ≤ 2 h bis zum Training und Mittagessen offen → leicht vorher, warme Mahlzeit danach
+  const PRE_SWAP = 120;
+  const swapNow = main && !main.flex && !after && !done('mi') && done('fr') && now >= s - PRE_SWAP && now < e;
+  const missedBefore = main && !main.flex && !after && !done('mi') && mi.t > s - PRE_SWAP && now < s;
+  if (swapNow || missedBefore) {
     mi.t = e + 30; mi.after = true; mi.swapped = true;
-    mi.name = 'Große Mahlzeit nach dem Training';
+    mi.name = 'Warme Mahlzeit nach dem Training';
     if (!done('ab')) {
-      if (now <= s - PRE_LIGHT) { ab.t = now; ab.variant = 'quark'; ab.light = true; ab.name = 'Leichte Mahlzeit vor dem Training'; }
+      if (now <= s - PRE_LIGHT || !swapNow) { ab.t = swapNow ? now : Math.max(frEnd + 120, s - 120); ab.variant = 'quark'; ab.light = true; ab.name = 'Leichte Mahlzeit vor dem Training'; }
       else ab.merged = true;
     }
   }
-  // Training vorbei, Mittag und Abend beide offen → zu einer Mahlzeit zusammenlegen (nicht zu viel vor dem Schlafen)
-  if (main && now >= e && !done('mi') && !done('ab') && !pend(mi) && !pend(ab)) { ab.merged = true; mi.t = Math.max(mi.t, e + 30); mi.after = true; mi.name = 'Große Mahlzeit nach dem Training'; }
-  // Sobald das Training vorbei ist, Vorher-Snacks, die nicht gegessen wurden, streichen
-  slots.forEach(x => { if (((x.kind === 'sn' && x.snack === 'pre') || x.kind === 'wa') && main && now >= e && !done(x.id) && !pend(x)) x.merged = true; });
-  // Snack „vor oder direkt nach“ dem Gym: nie überfällig, rutscht notfalls direkt hinter das Training
+  // Training vorbei und Mittagessen noch offen → warme Mahlzeit jetzt, Abendessen nur noch, wenn Zeit bleibt
+  if (main && now >= e && !done('mi')) { mi.t = Math.max(Math.min(mi.t, now), e + 15); mi.after = true; if (!mi.swapped) mi.name = 'Warme Mahlzeit nach dem Training'; }
+
+  // 3) Mittagessen gibt es jeden Tag: solange offen, kommt das Abendessen erst danach
+  if (!done('mi') && !ab.light && !done('ab')) {
+    const miAt = Math.max(mi.t, now);
+    if (miAt >= SLEEP - 150) { ab.merged = true; mi.mergedDinner = true; }
+    else ab.t = Math.max(ab.t, miAt + 150);
+  }
+  // Zwischenmahlzeit nur zwischen Mittag und Abend, sonst weglassen
+  slots.forEach(x => {
+    if (x.kind !== 'zw' || done(x.id)) return;
+    const miAt = done('mi') ? eatenAt('mi') : Math.max(mi.t, now);
+    x.t = Math.max(x.t0, miAt + 120);
+    if ((main && x.t > s - PRE_BIG && x.t < e) || x.t > ab.t - 60) x.merged = true;
+    // verpasst: ab Trainingsbeginn oder 90 min nach geplanter Zeit nicht mehr vorschlagen
+    if ((main && now >= s - 60) || now > x.t + 90) x.merged = true;
+  });
+  // Vorher-Snacks, die bis zum Trainingsende nicht gegessen wurden, streichen
+  slots.forEach(x => { if (((x.kind === 'sn' && x.snack === 'pre') || x.kind === 'wa') && main && now >= e && !done(x.id)) x.merged = true; });
+  // Snack „vor oder direkt nach“ dem Gym: rutscht notfalls direkt hinter das Training
   slots.forEach(x => { if (x.kind === 'sn' && x.snack !== 'pre' && !done(x.id)) x.t = now < s ? Math.max(x.t, now) : now < e ? e : now; });
-  slots.forEach(x => { if (x.kind === 'zw' && main && now > s - PRE_BIG && !done(x.id) && !pend(x)) x.merged = true; });
-  if (main && now >= e && !done('mi') && ab.merged && !pend(mi)) mi.mergedDinner = true;
+  // Pre-Workout-Snack erst, wenn Porridge gegessen ist
+  slots.forEach(x => { if (x.kind === 'sn' && !done('fr') && !done(x.id)) x.t = Math.max(x.t, frEnd + 60); });
+  // Leichte Mahlzeit vor dem Training ersetzt den Pre-Workout-Snack, wenn beide kurz hintereinander lägen
+  slots.forEach(x => { if (x.kind === 'sn' && x.snack === 'pre' && ab.light && !done(x.id) && Math.abs(x.t - ab.t) < 75) x.merged = true; });
+  // Abendessen immer als letzte Mahlzeit des Tages
+  if (!done('ab') && !ab.light && !ab.merged) ab.t = Math.max(ab.t, ...slots.filter(x => x !== ab && !x.merged && !done(x.id)).map(x => x.t + 60));
   if (mi.after && lateEnd != null && mi.t >= lateEnd) mi.noFat = true;
   if (ab.light === undefined && lateEnd != null && ab.t >= lateEnd) ab.noFat = true;
 
@@ -685,7 +716,7 @@ function render() {
   }
 
   // Rückfrage: schon gegessen?
-  const overdue = p.slots.find(x => !st.log[x.id] && x.t0 != null && x.t0 < now - 15 && x.t <= x.t0 + 1 && p.rem.includes(x));
+  const overdue = null; // feste Reihenfolge: offene Mahlzeiten bleiben einfach der aktuelle Vorschlag
   if (overdue) {
     h += `<div class="panel ask"><div class="ask-q">Hast du ${overdue.kind === 'fr' ? 'dein Frühstück' : 'die Mahlzeit „' + esc(overdue.name) + '“'} (${hm(overdue.t)}) schon gegessen?</div>
       <div class="ask-b"><button class="chip big" data-act="log" data-id="${overdue.id}" data-st="eaten">Ja, wie geplant</button>
