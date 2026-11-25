@@ -259,7 +259,7 @@ window.Modules.fortschritt = { render: renderGym, click: clickGym, glance: glanc
 // =====================================================================
 // Belastung = Dauer × Anstrengung (Session-RPE nach Foster). Erholung = Morgen-Check + später Uhr/Gurt.
 const RPE = ['sehr leicht', 'leicht', 'locker', 'mittel', 'fordernd', 'hart', 'sehr hart', 'sehr hart+', 'extrem', 'maximal'];
-const TYPES = { badminton: 'Badminton', turnier: 'Turnier', gymOber: 'Gym Oberkörper', gymBeine: 'Gym Beine', intervalle: 'Intervalle', fahrrad: 'Fahrrad' };
+const TYPES = { badminton: 'Badminton', turnier: 'Turnier', gymOber: 'Gym Oberkörper', gymBeine: 'Gym Beine', intervalle: 'Intervalle', laufen: 'Laufen', fahrrad: 'Fahrrad' };
 const KIND = { technik: 'Technik / Drills', footwork: 'Footwork / Athletik', spiel: 'Spielformen / Matches', punktspiel: 'Punktspiel / Turnier' };
 const FMT = { einzel: 'Einzel', doppel: 'Doppel', mixed: 'Mixed', gemischt: 'Gemischt' };
 const PAIN = { schulter: 'Schulter', ellbogen: 'Ellbogen', hand: 'Handgelenk', ruecken: 'Unterer Rücken', leiste: 'Leiste / Adduktoren', knie: 'Knie', sprung: 'Sprunggelenk', achilles: 'Achilles / Wade' };
@@ -424,7 +424,7 @@ function clickRec(e) {
     return re();
   }
   if (a === 'manual') { rd = { type: 'badminton', dur: 120, pain: null }; return re(); }
-  if (ds.rt) { rd.type = ds.rt; rd.dur = { badminton: 120, turnier: 360, gymOber: 75, gymBeine: 75, intervalle: 45, fahrrad: 60 }[rd.type]; return re(); }
+  if (ds.rt) { rd.type = ds.rt; rd.dur = { badminton: 120, turnier: 360, gymOber: 75, gymBeine: 75, intervalle: 45, laufen: 60, fahrrad: 60 }[rd.type]; return re(); }
   if (ds.rk) { rd.kind = ds.rk; return re(); }
   if (ds.rf) { rd.fmt = ds.rf; return re(); }
   if (ds.rm) { rd.matches = +ds.rm; return re(); }

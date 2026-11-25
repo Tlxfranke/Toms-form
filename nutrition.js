@@ -63,9 +63,9 @@ const TPL = {
 };
 const TT = {
   badminton: 'Badminton', gymOber: 'Gym Oberkörper', gymBeine: 'Gym Beine',
-  intervalle: 'Intervalle 15:15', fahrrad: 'Fahrrad Zone 2', turnier: 'Turnier'
+  intervalle: 'Intervalle 15:15', laufen: 'Laufen', fahrrad: 'Fahrrad Zone 2', turnier: 'Turnier'
 };
-const TT_DUR = { badminton: 120, gymOber: 75, gymBeine: 75, intervalle: 45, fahrrad: 60, turnier: 360 };
+const TT_DUR = { badminton: 120, gymOber: 75, gymBeine: 75, intervalle: 45, laufen: 60, fahrrad: 60, turnier: 360 };
 // Was laut Plan an welchem Wochentag dran ist (0 = Sonntag)
 const WEEK = [
   { type: 'intervalle' }, { type: 'badminton', dur: 120 }, { type: 'gymOber' },
@@ -107,12 +107,28 @@ fetch('schedule.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).
   if (j && j.days) { SCHEDULE = j; save('tf-schedule', j); window.Shell && Shell.refresh(); }
 }).catch(() => {});
 
+// Wochenplan (Teil A) gilt im Zeitraum from–until, Einzeltermine (Teil B / Google) ergänzen
+const inPlan = k => SCHEDULE.week && (!SCHEDULE.from || k >= SCHEDULE.from) && (!SCHEDULE.until || k <= SCHEDULE.until);
+// Blöcke, in denen Tom unterwegs ist und nicht essen kann (Arbeit, Uni, inkl. Fahrzeit)
+function busyToday() {
+  const k = dkey(new Date()), out = [];
+  if (!((SCHEDULE.days || {})[k] || []).some(x => x.type === 'turnier')) {
+    const wk = inPlan(k) && SCHEDULE.week[new Date().getDay()];
+    if (wk && wk.busy) out.push(...wk.busy);
+  }
+  out.push(...((SCHEDULE.busy || {})[k] || []));
+  return out.map(b => ({ start: toMin(b.start), end: toMin(b.end), title: b.title })).sort((a, b) => a.start - b.start);
+}
 // Gym und Intervalle sind zeitlich flexibel, Badminton ist fest, Fahrrad optional.
 const FLEX = ['gymOber', 'gymBeine', 'intervalle'];
 function rawSessions(st) {
   if (st.sess) return st.sess;
-  const cal = (SCHEDULE.days || {})[dkey(new Date())];
-  if (cal && cal.length) return cal.map(x => ({ type: x.type, start: toMin(x.start), end: toMin(x.end), title: x.title, src: 'cal' }));
+  const k = dkey(new Date());
+  const conv = x => ({ type: x.type, start: toMin(x.start), end: toMin(x.end), title: x.title, travel: x.travel || 0, src: 'cal' });
+  const cal = (SCHEDULE.days || {})[k];
+  if (cal && cal.length) return cal.map(conv);
+  const wk = inPlan(k) && SCHEDULE.week[new Date().getDay()];
+  if (wk) return wk.sess.map(conv);
   const def = WEEK[new Date().getDay()];
   if (FLEX.includes(def.type)) return [{ type: def.type, flex: true, auto: true }];
   return null; // Badminton-Tag ohne Zeit → fragen
@@ -147,7 +163,7 @@ function tplFor(sess) {
   return 'intervalle';
 }
 function mainSess(sess) {
-  const pri = s => (s.type === 'badminton' || s.type === 'turnier' ? 1000 : 0) + (s.end - s.start);
+  const pri = s => (s.type === 'badminton' || s.type === 'turnier' ? 1000 : s.type === 'gymOber' || s.type === 'gymBeine' ? 500 : 0) + (s.end - s.start);
   return sess.filter(s => s.type !== 'fahrrad').sort((a, b) => pri(b) - pri(a))[0] || sess[0] || null;
 }
 
@@ -156,7 +172,11 @@ function buildDay(st, now) {
   const sess = sessionsToday(st, now);
   if (!sess) return { unknown: true };
   const T = tplFor(sess), tpl = TPL[T], main = mainSess(sess);
-  const s = main ? main.start : null, e = main ? main.end : null;
+  const s = main ? main.start - (main.travel || 0) : null, e = main ? main.end + (main.travel || 0) : null;
+  const busy = busyToday();
+  const post = main && main.travel ? 10 : 30; // nach Fahrt zu Hause direkt essen
+  // Zeit aus Arbeit/Uni-Blöcken herausschieben (an deren Ende)
+  const free = t => { for (const b of busy) if (t >= b.start && t < b.end) t = b.end; return t; };
   const isBad = x => x.type === 'badminton' || x.type === 'turnier';
   const late = sess.filter(x => isBad(x) && x.end >= 18 * 60);
   const lateEnd = late.length ? Math.min(...late.map(x => x.end)) : null;
@@ -168,12 +188,17 @@ function buildDay(st, now) {
   };
 
   let slots = [];
-  slots.push({ id: 'fr', name: 'Frühstück', t: s != null && s < 630 ? Math.max(390, s - 150) : 450, kind: 'fr' });
+  let frT = s != null && s < 630 ? Math.max(390, s - 150) : 450;
+  const morning = sess.find(x => x !== main && x.start <= frT + 30 && x.end > frT - 30 && x.start < 600);
+  if (morning) frT = morning.end + 15;
+  const b0 = busy.find(b => frT >= b.start && frT < b.end);
+  if (b0 && b0.start - 15 >= 360) frT = b0.start - 15;
+  slots.push({ id: 'fr', name: 'Frühstück', t: frT, kind: 'fr' });
   const rad = sess.find(x => x.type === 'fahrrad');
   if (rad) slots.push({ id: 'rad', name: 'Nach dem Radfahren', t: rad.end + 15, kind: 'rad' });
 
   let lt = 750, after = false;
-  if (main) { if (s - PRE_BIG >= 660) lt = Math.min(750, s - PRE_BIG); else { lt = e + 30; after = true; } }
+  if (main) { if (s - PRE_BIG >= 630) lt = Math.min(750, s - PRE_BIG); else { lt = e + post; after = true; } }
   const mi = { id: 'mi', name: 'Mittagessen', t: lt, kind: 'mi', after };
   slots.push(mi);
 
@@ -185,9 +210,9 @@ function buildDay(st, now) {
     const pre = tpl.snack === 'pre';
     slots.push({ id: 'sn', name: pre ? 'Pre-Workout' : 'Rund ums Training', t: s - (pre ? 75 : 45), kind: 'sn', snack: tpl.snack });
   }
-  if (main && e - s >= 180) {
+  if (main && main.end - main.start >= 180) {
     let i = 1;
-    for (let t = s + 120; t <= e - 60; t += 150, i++) slots.push({ id: 'wa' + i, name: 'Während des Trainings', t, kind: 'wa' });
+    for (let t = main.start + 120; t <= main.end - 60; t += 150, i++) slots.push({ id: 'wa' + i, name: 'Während des Trainings', t, kind: 'wa' });
   }
   let dt = !main ? 19 * 60 : after ? Math.max(lt + 180, 19 * 60) : Math.max(e + (lateEnd ? 30 : 45), 18 * 60 + 30);
   const ab = { id: 'ab', name: 'Abendessen', t: Math.min(dt, SLEEP - 60), kind: 'ab', variant: tpl.dinner };
@@ -204,16 +229,17 @@ function buildDay(st, now) {
   if (!done('fr')) fr.t = Math.min(fr.t0, now);
   const frEnd = done('fr') ? eatenAt('fr') : Math.max(fr.t, now);
   if (!done('mi') && !mi.after) mi.t = Math.max(mi.t0, frEnd + 150);
+  if (!done('mi') && !mi.after) { const f = free(mi.t); if (f !== mi.t) { mi.t = f; mi.busyShift = true; } }
 
   // 2) Ausnahme Training: ≤ 2 h bis zum Training und Mittagessen offen → leicht vorher, warme Mahlzeit danach
   const PRE_SWAP = 120;
   const swapNow = main && !main.flex && !after && !done('mi') && done('fr') && now >= s - PRE_SWAP && now < e;
-  const missedBefore = main && !main.flex && !after && !done('mi') && mi.t > s - PRE_SWAP && now < s;
+  const missedBefore = main && !main.flex && !after && !done('mi') && mi.t >= s - PRE_SWAP && now < s;
   if (swapNow || missedBefore) {
-    mi.t = e + 30; mi.after = true; mi.swapped = true;
+    mi.t = e + post; mi.after = true; mi.swapped = true;
     mi.name = 'Warme Mahlzeit nach dem Training';
     if (!done('ab')) {
-      if (now <= s - PRE_LIGHT || !swapNow) { ab.t = swapNow ? now : Math.max(frEnd + 120, s - 120); ab.variant = 'quark'; ab.light = true; ab.name = 'Leichte Mahlzeit vor dem Training'; }
+      if (now <= s - PRE_LIGHT || !swapNow) { ab.t = swapNow ? now : free(Math.max(frEnd + 120, s - 120)); ab.variant = 'quark'; ab.light = true; ab.name = 'Leichte Mahlzeit vor dem Training'; }
       else ab.merged = true;
     }
   }
@@ -249,6 +275,8 @@ function buildDay(st, now) {
   slots.forEach(x => { if (x.kind === 'sn' && !done('fr') && !done(x.id)) x.t = Math.max(x.t, frEnd + 60); });
   // Leichte Mahlzeit vor dem Training ersetzt den Pre-Workout-Snack, wenn beide kurz hintereinander lägen
   slots.forEach(x => { if (x.kind === 'sn' && x.snack === 'pre' && ab.light && !done(x.id) && Math.abs(x.t - ab.t) < 75) x.merged = true; });
+  // Nichts in Arbeit/Uni-Zeiten legen (außer es ist gerade jetzt dran)
+  slots.forEach(x => { if ((x.kind === 'zw' || x.kind === 'ab') && !done(x.id) && !x.merged && x.t > now) x.t = free(x.t); });
   // Abendessen immer als letzte Mahlzeit des Tages
   if (!done('ab') && !ab.light && !ab.merged) ab.t = Math.max(ab.t, ...slots.filter(x => x !== ab && !x.merged && !done(x.id)).map(x => x.t + 60));
   if (mi.after && lateEnd != null && mi.t >= lateEnd) mi.noFat = true;
@@ -256,7 +284,7 @@ function buildDay(st, now) {
 
   slots = slots.filter(x => !x.merged).sort((a, b) => a.t - b.t);
   slots.forEach(x => { x.t = Math.min(x.t, SLEEP - 30); });
-  return { slots, ctx, T, tpl, sess, main };
+  return { slots, ctx, T, tpl, sess, main, busy };
 }
 
 // ---------- Zusammensetzung einer Mahlzeit ----------
@@ -717,6 +745,7 @@ function render() {
   const ctxTxt = !sess.length ? 'Kein Training heute' :
     sess.map(x => x.flex ? `${TT[x.type]} · flexibel, ideal ab ${hm(x.start)}` : `${TT[x.type]} ${hm(x.start)}–${hm(x.end)}`).join(' · ');
   h += `<button class="daychip" data-act="tedit"><span>${esc(tpl.name)}</span><small>${esc(ctxTxt)}${sess.some(x => x.src === 'cal') ? ' · aus Kalender' : ''}</small><b>ändern</b></button>`;
+  if (p.busy && p.busy.length) h += `<p class="mini">Unterwegs (inkl. Fahrt): ${p.busy.map(b => esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.end)).join(' · ')}</p>`;
   if (tpl.note) h += `<p class="mini">${tpl.note}</p>`;
   const flex = sess.find(x => x.flex);
   if (flex) {
