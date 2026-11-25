@@ -152,9 +152,28 @@ async function click(e) {
   return true;
 }
 
-window.Sync = { panel, click, push, pull };
+// Apple-Watch-Werte (vom Kurzbefehl an den Dienst geschickt) holen und in tf-rec einsortieren
+async function watchPull() {
+  if (!ready() || !navigator.onLine || !pulled) return;
+  try {
+    const r = await fetch((cfg().url || URL_DEFAULT).replace(/\/$/, '') + '/watch', { headers: { 'Authorization': 'Bearer ' + cfg().token } });
+    if (!r.ok) return;
+    const w = await r.json();
+    if (!w || !w.days) return;
+    let rec; try { rec = JSON.parse(rawGet.call(localStorage, 'tf-rec')) || { days: {} }; } catch (e) { rec = { days: {} }; }
+    rec.days = rec.days || {};
+    let changed = false;
+    Object.entries(w.days).forEach(([d, v]) => {
+      const cur = rec.days[d] || {};
+      if (!cur.watch || cur.watch.at !== v.at) { rec.days[d] = { ...cur, watch: v }; changed = true; }
+    });
+    if (changed) { localStorage.setItem('tf-rec', JSON.stringify(rec)); window.Shell && Shell.refresh(); }
+  } catch (e) {}
+}
+
+window.Sync = { panel, click, push, pull, watchPull };
 if (!cfg().token) pulled = true;
-addEventListener('load', () => setTimeout(() => pull(), 800));
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pull(); else if (cfg().changed > (cfg().synced || 0)) push(); });
+addEventListener('load', () => setTimeout(() => pull().then(watchPull), 800));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pull().then(watchPull); else if (cfg().changed > (cfg().synced || 0)) push(); });
 addEventListener('online', () => pull());
 })();

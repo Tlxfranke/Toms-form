@@ -509,23 +509,25 @@ function renderData() {
     <button class="cta rc" data-da="save">${b.w[t] != null ? 'Aktualisieren' : 'Gewicht speichern'}</button></div>`;
 
   // Auf einen Blick
-  const gm = day.garmin || {}, well = day.well;
+  const wt = day.watch || {}, well = day.well;
+  const hh = m => m != null ? Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0') : null;
   const l7 = [...Array(7)].map((_, i) => loadOf(r, daysAgo(i))).reduce((a, c) => a + c, 0);
   const k = (v, lbl) => `<div><b>${v != null ? v : '–'}</b><small>${lbl}</small></div>`;
   h += `<div class="panel"><h3>Heute auf einen Blick</h3><div class="kpis k6">
-    ${k(well ? wellScore(well) + '/25' : null, 'Tagesform (Gefühl)')}${k(gm.score, 'Schlafscore')}${k(gm.sleep, 'Schlafdauer')}
-    ${k(gm.hrv, 'HRV nachts')}${k(gm.rhr, 'Ruhepuls')}${k(gm.bb, 'Body Battery')}
-    ${k(gm.stress, 'Stress Ø')}${k(loadOf(r, t) || null, 'Belastung heute')}${k(l7 || null, 'Belastung 7 Tage')}</div></div>`;
+    ${k(well ? wellScore(well) + '/25' : null, 'Tagesform (Gefühl)')}${k(hh(wt.sleepMin), 'Schlaf (h)')}${k(wt.deep != null ? hh(wt.deep + wt.rem) : null, 'Tief + REM')}
+    ${k(wt.hrv != null ? wt.hrv + ' ms' : null, 'HRV nachts')}${k(wt.rhr, 'Ruhepuls')}${k(wt.kcal, 'Verbrauch 24 h')}
+    ${k(wt.bed ? wt.bed + '–' + wt.wake : null, 'Geschlafen')}${k(loadOf(r, t) || null, 'Belastung heute')}${k(l7 || null, 'Belastung 7 Tage')}</div>
+    ${wt.at ? '' : '<p class="mini">Schlaf, HRV, Ruhepuls und Verbrauch kommen jeden Morgen per Kurzbefehl von der Apple Watch.</p>'}</div>`;
 
   // Schlaf & Erholung (Uhr) – 7 Tage
   const days7 = [...Array(7)].map((_, i) => daysAgo(6 - i));
   const wd = d => new Date(d + 'T12:00').toLocaleDateString('de-DE', { weekday: 'short' }).slice(0, 2);
-  const series = (key, max) => `<div class="bars7">${days7.map(d => { const v = ((r.days[d] || {}).garmin || {})[key]; return `<div><i style="height:${v ? Math.max(4, v / max * 100) : 3}%;${v ? '' : 'opacity:.25'}"></i><small>${wd(d)}</small></div>`; }).join('')}</div>`;
-  const anyG = days7.some(d => (r.days[d] || {}).garmin);
-  h += `<div class="panel"><h3>Schlaf · 7 Tage</h3>${series('scoreN', 100)}
-    <p class="mini">${anyG ? 'Schlafscore je Nacht' : 'Schlafdauer, Schlafscore, Tief- und REM-Schlaf – kommt von der Uhr.'}</p></div>
-    <div class="panel"><h3>Erholung · 7 Tage</h3>${series('hrvN', 120)}
-    <p class="mini">${anyG ? 'HRV je Nacht – das Band zeigt deinen Normalbereich' : 'HRV mit deinem Normalbereich, Ruhepuls, Body Battery und Stress – kommt von der Uhr.'}</p></div>`;
+  const series = (key, max) => `<div class="bars7">${days7.map(d => { const w = (r.days[d] || {}).watch || {}; const v = key === 'sleepH' ? (w.sleepMin ? w.sleepMin / 60 : null) : w[key]; return `<div><i style="height:${v ? Math.max(4, v / max * 100) : 3}%;${v ? '' : 'opacity:.25'}"></i><small>${wd(d)}</small></div>`; }).join('')}</div>`;
+  const anyG = days7.some(d => (r.days[d] || {}).watch);
+  h += `<div class="panel"><h3>Schlaf · 7 Tage</h3>${series('sleepH', 9)}
+    <p class="mini">${anyG ? 'Schlafdauer je Nacht (voller Balken = 9 h)' : 'Schlafdauer, Tief- und REM-Schlaf – kommt von der Apple Watch.'}</p></div>
+    <div class="panel"><h3>Erholung · 7 Tage</h3>${series('hrv', 100)}
+    <p class="mini">${anyG ? 'HRV je Nacht in ms – höher heißt meist besser erholt' : 'HRV und Ruhepuls – kommt von der Apple Watch.'}</p></div>`;
 
   // Training (Gurt)
   const hrS = days7.flatMap(d => ((r.days[d] || {}).sess || []).filter(s => s.hr).map(s => ({ ...s, d })));
