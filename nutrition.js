@@ -46,7 +46,8 @@ const FOOD = {
   kaese: { n: 'Käse', m: [360, 24, 0, 29], u: 25, un: ['Scheibe Käse', 'Scheiben Käse'] },
   muesli: { n: 'Müsli (ungezuckert)', m: [360, 10, 60, 6] },
   milch: { n: 'Milch 1,5 %', m: [47, 3.4, 4.8, 1.5] },
-  fruechte: { n: 'Obst (z. B. Banane, Apfel, Beeren, Kiwi)', m: [60, 0.8, 13, 0.3] }
+  fruechte: { n: 'Obst (z. B. Banane, Apfel, Beeren, Kiwi)', m: [60, 0.8, 13, 0.3] },
+  griess: { n: 'Grießbrei / Milchreis (fertig zubereitet)', m: [105, 3.5, 18, 2] }
 };
 
 // ---------- Tagesarten aus dem Plan ----------
@@ -219,6 +220,12 @@ function buildDay(st, now) {
   // Training vorbei und Mittagessen noch offen → warme Mahlzeit jetzt, Abendessen nur noch, wenn Zeit bleibt
   if (main && now >= e && !done('mi')) { mi.t = Math.max(Math.min(mi.t, now), e + 15); mi.after = true; if (!mi.swapped) mi.name = 'Warme Mahlzeit nach dem Training'; }
 
+  // 2b) Zu spät für die warme Mahlzeit (z. B. Arbeit bis abends, Training danach): statt Reis/Fleisch/Gemüse
+  //     ein leicht verdauliches spätes Essen, das Kalorien und Makros trotzdem füllt
+  if (!done('mi') && Math.max(mi.t, now) >= SLEEP - 150) {
+    mi.late = true; mi.noFat = true;
+    mi.name = 'Spätes Essen – leicht verdaulich';
+  }
   // 3) Mittagessen gibt es jeden Tag: solange offen, kommt das Abendessen erst danach
   if (!done('mi') && !ab.light && !done('ab')) {
     const miAt = Math.max(mi.t, now);
@@ -258,6 +265,13 @@ function compose(slot, day, ch) {
   switch (slot.kind) {
     case 'fr': return [{ f: 'hafer', g: 120 }, { f: 'skyr', g: 200 }, { f: 'whey', g: 30 }, { f: 'apfel200', n: 1 }, { f: 'beeren', g: 150 }, { f: 'schoko', g: 20 }, { f: 'zimt', g: 0 }];
     case 'mi': {
+      if (slot.late) {
+        const v = ch.late_v || 'quark';
+        if (v === 'griess') return [{ f: 'griess', g: 400, sc: { min: 250, max: 600, step: 50 } }, { f: 'whey', g: 30 }, { f: 'banane', n: 1 }];
+        if (v === 'toast') return [{ f: 'toast', n: 4, sc: { min: 2, max: 6, step: 1 } }, { f: 'honig', g: 20 }, { f: 'whey', g: 40 }, { f: 'milch', g: 300 }];
+        if (v === 'reis') return [{ f: 'reis', g: 100, sc: { min: 60, max: 150, step: 10 } }, { f: 'haehnchen', g: 150 }];
+        return [{ f: 'quark', g: 400 }, { f: 'hafer', g: 60, sc: { min: 30, max: 100, step: 10 } }, { f: 'banane', n: 1 }, { f: 'honig', g: 20 }];
+      }
       let p = ch.mi_p || 'haehnchen';
       if (slot.noFat && p === 'lachs') p = 'haehnchen';
       const items = [{ f: ch.mi_c || 'reis', g: tpl.lunch, sc: { min: tpl.lunch - 50, max: Math.max(tpl.lunch + 50, 210), step: 10 } }, { f: p, g: 200 }, { f: 'gemuese', g: 300 }];
@@ -305,6 +319,7 @@ function applyAbVariant(x, ch) {
   x.variant = v;
 }
 function optionsFor(slot, ch) {
+  if (slot.kind === 'mi' && slot.late) return [{ key: 'late_v', label: 'Was gibt es?', val: ch.late_v || 'quark', opts: [['quark', 'Quark + Haferflocken + Banane'], ['griess', 'Grießbrei/Milchreis + Shake'], ['toast', 'Toast + Honig + Shake'], ['reis', 'Reis + Hähnchen (ohne Öl, ohne Gemüse)']] }];
   if (slot.kind === 'mi') return [
     { key: 'mi_c', label: 'Kohlenhydrate', val: ch.mi_c || 'reis', opts: [['reis', 'Reis'], ['nudeln', 'Nudeln']] },
     { key: 'mi_p', label: 'Protein', val: ch.mi_p || 'haehnchen', opts: [['haehnchen', 'Hähnchen'], ['hack', 'Rinderhack'], ...(slot.noFat ? [] : [['lachs', 'Lachs']])] }
@@ -420,7 +435,7 @@ function plan(st, now) {
   // Nicht zu viel kurz vor dem Schlafen
   rem.forEach(x => {
     if (x.te < SLEEP - 150) return;
-    for (let i = 0; i < 20 && sumItems(x.items)[0] > LATE_CAP; i++) {
+    for (let i = 0; i < 20 && sumItems(x.items)[0] > (x.late ? LATE_CAP + 300 : LATE_CAP); i++) {
       const f = x.items.findIndex(it => it.fill === 'c' || it.fill === 'f');
       if (f >= 0) { x.items.splice(f, 1); continue; }
       const it = x.items.find(it => it.sc && (it.n != null ? it.n : it.g) > it.sc.min);
