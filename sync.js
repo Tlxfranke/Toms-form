@@ -6,6 +6,7 @@ const URL_DEFAULT = 'https://toms-form-sync.tlh-franke.workers.dev';
 const CFG = 'tf-sync';
 const SKIP = [CFG, 'tf-schedule'];
 const isData = k => k && k.startsWith('tf-') && !SKIP.includes(k);
+const BAK = 'tfbak'; // Sicherheitskopie des Gerätestands vor jedem Überschreiben durch die Cloud (kein tf-Präfix → wird nicht synchronisiert)
 
 const rawGet = Storage.prototype.getItem, rawSet = Storage.prototype.setItem;
 const cfg = () => { try { return JSON.parse(rawGet.call(localStorage, CFG)) || {}; } catch (e) { return {}; } };
@@ -18,7 +19,8 @@ const setStatus = (state, msg) => { status = { state, at: Date.now(), msg: msg |
 Storage.prototype.setItem = function (k, v) {
   rawSet.call(this, k, v);
   // Erst nach dem ersten Abgleich als Änderung zählen – sonst würde ein frisches Gerät mit seinen Start-Einstellungen die Cloud überschreiben
-  if (this === localStorage && isData(k) && k !== 'tf-gate' && pulled) { const fast = updateGate(); const c = cfg(); c.changed = Date.now(); saveCfg(c); schedule(fast); }
+  // Ohne Zugangscode nichts als Änderung merken – sonst wirkt ein frisches Gerät „neuer“ als die Cloud und überschreibt sie beim Verbinden
+  if (this === localStorage && isData(k) && k !== 'tf-gate' && pulled && cfg().token) { const fast = updateGate(); const c = cfg(); c.changed = Date.now(); saveCfg(c); schedule(fast); }
 };
 function schedule(fast) { clearTimeout(timer); timer = setTimeout(push, fast ? 400 : 2500); }
 
@@ -69,6 +71,7 @@ async function pull(force) {
     const remote = await r.json();
     const localChanged = c.changed || 0;
     if (remote.updated && remote.data && (force || remote.updated > localChanged)) {
+      backupLocal(remote.data);
       Object.entries(remote.data).forEach(([k, v]) => { if (isData(k)) rawSet.call(localStorage, k, v); });
       const c2 = cfg(); c2.changed = remote.updated; c2.synced = remote.updated; saveCfg(c2);
       setStatus('ok');
@@ -77,6 +80,28 @@ async function pull(force) {
     else setStatus('ok');
     pulled = true;
   } catch (e) { setStatus('error', 'offline'); }
+}
+
+// Vor dem Überschreiben den bisherigen Gerätestand sichern (nur wenn sich echte Tagesdaten vom Cloud-Stand unterscheiden)
+function backupLocal(remoteData) {
+  const local = {};
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (isData(k) && k !== 'tf-gate') local[k] = rawGet.call(localStorage, k); }
+  // Start-Einstellungen eines frischen Geräts brauchen keine Sicherheitskopie
+  const differs = Object.keys(local).some(k => k.startsWith('tf-day-') && local[k] !== remoteData[k]);
+  if (!differs) return;
+  try { rawSet.call(localStorage, BAK, JSON.stringify({ at: Date.now(), data: local })); } catch (e) {}
+}
+const backup = () => { try { return JSON.parse(rawGet.call(localStorage, BAK)); } catch (e) { return null; } };
+async function restoreBackup() {
+  const b = backup();
+  if (!b || !b.data) return false;
+  Object.keys(b.data).forEach(k => rawSet.call(localStorage, k, b.data[k]));
+  updateGate();
+  const c = cfg(); c.changed = Date.now(); saveCfg(c);
+  pulled = true;
+  await push();
+  if (status.state === 'ok') { try { localStorage.removeItem(BAK); } catch (e) {} }
+  return status.state === 'ok';
 }
 
 function statusText() {
@@ -96,7 +121,15 @@ function panel() {
     <button class="cta rc" data-sync="connect">Verbinden</button></div>`;
   return `<div class="panel"><h3>Sync & Sicherung</h3>
     <p class="mini" id="syncStatus">${statusText()}</p>
-    <div class="row2"><button class="ghost" data-sync="now">Jetzt sichern</button><button class="ghost" data-sync="disconnect">Trennen</button></div></div>`;
+    <div class="row2"><button class="ghost" data-sync="now">Jetzt sichern</button><button class="ghost" data-sync="disconnect">Trennen</button></div>
+    ${bakHtml()}</div>`;
+}
+function bakHtml() {
+  const b = backup();
+  if (!b || !b.at) return '';
+  const d = new Date(b.at), when = d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return `<p class="mini" style="margin-top:12px">Der Stand dieses Geräts wurde am ${when} durch den Cloud-Stand ersetzt. Falls dabei etwas verloren ging, kannst du ihn zurückholen – er wird dann auf allen Geräten übernommen.</p>
+    <button class="cta rc" data-sync="restore">Stand dieses Geräts wiederherstellen</button>`;
 }
 
 async function click(e) {
@@ -108,10 +141,12 @@ async function click(e) {
     if (t.trim().length < 20) { Shell.toast('Zugangscode unvollständig'); return true; }
     const c = cfg(); c.token = t.trim(); saveCfg(c);
     Shell.toast('Verbinde …');
-    await pull();
+    // Neues Gerät: immer erst den Cloud-Stand übernehmen (eigener Stand bleibt als Sicherheitskopie)
+    await pull(!c.synced);
     if (status.state === 'error') { const c2 = cfg(); delete c2.token; saveCfg(c2); Shell.toast(status.msg || 'Verbindung fehlgeschlagen'); }
     else { await push(); Shell.toast('Sync aktiv'); }
   } else if (a === 'now') { await push(); Shell.toast(status.state === 'ok' ? 'Gesichert' : 'Nicht gesichert'); }
+  else if (a === 'restore') { Shell.toast('Stelle wieder her …'); const ok = await restoreBackup(); Shell.toast(ok ? 'Wiederhergestellt & gesichert' : 'Wiederherstellen fehlgeschlagen'); }
   else if (a === 'disconnect') { const c = cfg(); delete c.token; saveCfg(c); Shell.toast('Sync getrennt'); }
   Shell.buzz(); Shell.refresh();
   return true;

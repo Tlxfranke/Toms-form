@@ -1,6 +1,6 @@
 // Offline-Unterstützung: Seite zuerst frisch aus dem Netz (damit Updates sofort ankommen),
 // ohne Netz aus dem Zwischenspeicher. Bei jeder Änderung VERSION hochzählen.
-const VERSION = 'v27';
+const VERSION = 'v28';
 const CACHE = 'toms-form-' + VERSION;
 const SHELL = ['./', './index.html', './sync.js', './nutrition.js', './training.js', './manifest.webmanifest', './icons/apple-touch-icon.png', './icons/icon-192.png'];
 
@@ -16,7 +16,7 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   if (new URL(e.request.url).origin !== self.location.origin) return; // Dienst-Anfragen (Sync, Suche) nie zwischenspeichern
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
