@@ -101,6 +101,53 @@ const dayState = () => {
 };
 const store = st => { const { _k, ...rest } = st; save(_k, rest); };
 
+// ---------- Gewohnheiten: gemerkte Essens-Kombis mit Makros, Wochentag und Uhrzeit ----------
+// tf-gew = { c: { schlüssel: { n: Name, m: [kcal, P, KH, F], hist: [{ d: Datum, wd: Wochentag, t: Minuten, slot }] } } }
+// Wird mitsynchronisiert und nachts gesichert – so kann Claude die Essgewohnheiten auch lesen.
+const GEW = 'tf-gew';
+const gew = () => { const g = load(GEW, null) || {}; g.c = g.c || {}; return g; };
+const gewKey = txt => String(txt || '').toLowerCase().replace(/\b(und|mit|plus)\b/g, ' ').split(/[\s,;+&/]+/).filter(Boolean).sort().join(' ');
+const todayKey = () => dkey(new Date());
+function gewLearn(txt, m, t, slot) {
+  const k = gewKey(txt);
+  if (!k || !m || !(m[0] > 0)) return;
+  const g = gew(), now = new Date(), c = g.c[k] || { n: String(txt).trim().slice(0, 80), hist: [] };
+  c.n = String(txt).trim().slice(0, 80); c.m = m.map(v => Math.round(v * 10) / 10);
+  c.hist.push({ d: todayKey(), wd: now.getDay(), t, slot: slot || 'extra' });
+  if (c.hist.length > 40) c.hist = c.hist.slice(-40);
+  g.c[k] = c; save(GEW, g);
+}
+function gewForget(txt, t, slot) {
+  const k = gewKey(txt), g = gew(), c = g.c[k];
+  if (!c) return;
+  const i = c.hist.findIndex(h => h.d === todayKey() && h.t === t && h.slot === (slot || 'extra'));
+  if (i >= 0) c.hist.splice(i, 1);
+  if (!c.hist.length) delete g.c[k];
+  save(GEW, g);
+}
+// Was isst Tom an diesem Wochentag üblicherweise um diese Zeit (aus früheren Wochen)?
+function gewHabit(slotId, t) {
+  const wd = new Date().getDay(), today = todayKey();
+  let best = null;
+  Object.entries(gew().c).forEach(([k, c]) => {
+    // nur Einträge, die eine Mahlzeit ersetzt haben (Snacks zählen nicht als Ersatz)
+    const hits = c.hist.filter(h => h.wd === wd && h.d < today && h.slot !== 'extra' && (h.slot === slotId || Math.abs(h.t - t) <= 90));
+    if (!hits.length) return;
+    const last = hits[hits.length - 1], score = hits.length * 10 + (last.d > (best ? best.lastD : '') ? 1 : 0);
+    if (!best || score > best.score) best = { k, n: c.n, m: c.m, score, n0: hits.length, lastD: last.d, lastT: last.t };
+  });
+  return best;
+}
+// Gemerkte Kombis zum Antippen: passender Wochentag/Uhrzeit zuerst, dann die häufigsten
+function gewList(t) {
+  const wd = new Date().getDay();
+  return Object.entries(gew().c).map(([k, c]) => {
+    const near = c.hist.filter(h => h.wd === wd && Math.abs(h.t - t) <= 120).length;
+    return { k, n: c.n, m: c.m, score: near * 100 + c.hist.length, last: c.hist.length ? c.hist[c.hist.length - 1].d : '' };
+  }).sort((a, b) => b.score - a.score || (b.last > a.last ? 1 : -1)).slice(0, 10);
+}
+const WD = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
 // Trainings aus dem Kalender (schedule.json, wird von Claude aus Google Kalender geschrieben)
 let SCHEDULE = load('tf-schedule', { days: {} });
 fetch('schedule.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => {
@@ -388,9 +435,16 @@ function plan(st, now) {
   (st.extra || []).forEach(x => { eaten = add(eaten, x.m, 1); });
   const rem = day.slots.filter(x => !st.log[x.id] || st.log[x.id].st === 'notyet');
   rem.forEach(x => { if (x.kind === 'ab') applyAbVariant(x, st.choice); x.items = compose(x, day, st.choice); x.te = Math.max(x.t, now); });
+  // An Tagen mit Gewohnheit (z. B. Di/Mi Ausweich-Kombi) die gewohnte Kombi fest einplanen – der Rest des Tages passt sich an
+  rem.forEach(x => {
+    if (st.choice['nohab-' + x.id]) return;
+    const h = gewHabit(x.id, x.t0 != null ? x.t0 : x.t);
+    if (h) { x.habit = h; x.items = []; }
+  });
+  const slotM = x => x.habit ? add(sumItems(x.items), x.habit.m) : sumItems(x.items);
   rem.forEach(x => { if (x.mergedDinner && (tpl.P - total0(eaten, rem)[1]) > 25) x.items.push({ f: 'quark', g: 250, fill: 'p' }); });
-  const total = () => rem.reduce((s, x) => add(s, sumItems(x.items)), eaten);
-  function total0(e0, r) { return r.reduce((s, x) => add(s, sumItems(x.items)), e0); }
+  const total = () => rem.reduce((s, x) => add(s, slotM(x)), eaten);
+  function total0(e0, r) { return r.reduce((s, x) => add(s, slotM(x)), e0); }
   const Cmid = (tpl.C[0] + tpl.C[1]) / 2, Fmid = (tpl.F[0] + tpl.F[1]) / 2;
   const isCarbFill = it => it.fill === 'c';
 
@@ -406,7 +460,7 @@ function plan(st, now) {
       if (it) { it.g += PSTEP[it.f]; did = true; break; }
     }
     if (!did) {
-      const x = rem.slice().reverse().find(x => x.items.filter(it => it.fill === 'p').length < 2);
+      const x = rem.slice().reverse().find(x => !x.habit && x.items.filter(it => it.fill === 'p').length < 2);
       if (!x) break;
       const dairy = x.items.some(it => ['quark', 'skyrA'].includes(it.f));
       const evening = x.kind === 'ab' || x.te >= SLEEP - 180;
@@ -427,7 +481,7 @@ function plan(st, now) {
       }
       if (!did) {
         const order = ['sn', 'wa', 'rad', 'zw', 'mi', 'ab'];
-        const x = rem.filter(x => ctx.carbOK(x.te) && x.items.filter(isCarbFill).length < 2 && !(x.light))
+        const x = rem.filter(x => !x.habit && ctx.carbOK(x.te) && x.items.filter(isCarbFill).length < 2 && !(x.light))
           .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))[0];
         if (!x) break;
         const have = x.items.filter(isCarbFill).map(i => i.f);
@@ -451,7 +505,7 @@ function plan(st, now) {
     if (gap < 4) break;
     let did = false;
     for (const x of rem) {
-      if (!ctx.fatOK(x.te) || x.noFat || x.light) continue;
+      if (x.habit || !ctx.fatOK(x.te) || x.noFat || x.light) continue;
       const fills = x.items.filter(it => it.fill === 'f');
       const has = f => x.items.some(it => it.f === f && it.fill === 'f');
       let pick = null;
@@ -473,7 +527,7 @@ function plan(st, now) {
 
   // Nicht zu viel kurz vor dem Schlafen
   rem.forEach(x => {
-    if (x.te < SLEEP - 150) return;
+    if (x.te < SLEEP - 150 || x.habit) return;
     for (let i = 0; i < 20 && sumItems(x.items)[0] > (x.late ? LATE_CAP + 300 : LATE_CAP); i++) {
       const f = x.items.findIndex(it => it.fill === 'c' || it.fill === 'f');
       if (f >= 0) { x.items.splice(f, 1); continue; }
@@ -484,6 +538,7 @@ function plan(st, now) {
     x.capped = true;
   });
 
+  rem.forEach(x => { x.m = slotM(x); });
   return { ...day, rem, eaten, total: total() };
 }
 
@@ -561,12 +616,12 @@ function sources(st) {
   const agg = {};
   const put = (name, m) => { const k = name.replace(/\s*\(.*?\)/g, ''); agg[k] = add(agg[k] || [0, 0, 0, 0], m); };
   Object.values(st.log).forEach(l => {
-    if (l.custom && l.st === 'eaten') {
-      const x = l.custom;
-      if (x.kind === 'list' && x.items) x.items.forEach(i => { const it = SN[i.id]; if (it) put(it.n, snM(it, i.q)); });
-      else if (x.kind === 'alt' && x.items) x.items.forEach(i => put(i.n, i.m.map(v => v * i.g / 100)));
-      else if (x.kind === 'macro') put(x.txt || 'Eigene Angabe', x.m);
-      else put(x.txt ? x.txt + ' (grob)' : 'Mahlzeit (grob)', x.m);
+    if (l.custom && (l.st === 'eaten' || l.st === 'half')) {
+      const x = l.custom, h = l.st === 'half' ? 0.5 : 1;
+      if (x.kind === 'list' && x.items) x.items.forEach(i => { const it = SN[i.id]; if (it) put(it.n, snM(it, i.q).map(v => v * h)); });
+      else if (x.kind === 'alt' && x.items) x.items.forEach(i => put(i.n, i.m.map(v => v * i.g / 100 * h)));
+      else if (x.kind === 'macro') put(x.txt || 'Eigene Angabe', x.m.map(v => v * h));
+      else put(x.txt ? x.txt + ' (grob)' : 'Mahlzeit (grob)', x.m.map(v => v * h));
       return;
     }
     if (!l.items || l.st === 'notyet' || l.st === 'skip') return;
@@ -575,6 +630,7 @@ function sources(st) {
   });
   (st.extra || []).forEach(x => {
     if (x.kind === 'list' && x.items) x.items.forEach(i => { const it = SN[i.id]; if (it) put(it.n, snM(it, i.q)); });
+    else if (x.kind === 'macro') put(x.txt || 'Eigene Angabe', x.m);
     else put(x.txt ? x.txt + ' (grob)' : 'Snack (grob)', x.m);
   });
   const list = Object.entries(agg).sort((a, b) => b[1][0] - a[1][0]);
@@ -613,8 +669,12 @@ const mLine = m => `${Math.round(m[0])} kcal · ${Math.round(m[1])} g P · ${Mat
 
 function snackSheet() {
   const ids = Object.keys(snd.sel);
-  let h = `<h3>${snd.meal ? 'Was hast du stattdessen gegessen?' : 'Snack eintragen'}</h3>
-    <div class="chips">${SNACKS.map(x => `<button class="chip${snd.sel[x.id] != null ? ' on' : ''}" data-act="snpick" data-v="${x.id}">${esc(x.n)}</button>`).join('')}</div>`;
+  let h = `<h3>${snd.meal ? 'Was hast du stattdessen gegessen?' : 'Snack eintragen'}</h3>`;
+  const known = gewList(nowMin());
+  if (known.length) h += `<div class="lbl2">Gemerkt – einmal antippen = eingetragen</div>
+    <div class="chips">${known.map(x => `<button class="chip" data-act="gewpick" data-k="${esc(x.k)}">${esc(x.n)} <small>${Math.round(x.m[0])} kcal</small></button>`).join('')}</div>
+    <div class="lbl2">Oder neu</div>`;
+  h += `<div class="chips">${SNACKS.map(x => `<button class="chip${snd.sel[x.id] != null ? ' on' : ''}" data-act="snpick" data-v="${x.id}">${esc(x.n)}</button>`).join('')}</div>`;
   if (ids.length) {
     h += `<div class="snrows">${ids.map(id => {
       const it = SN[id], q = snd.sel[id];
@@ -626,10 +686,11 @@ function snackSheet() {
     <div class="macro" id="snSum">Zusammen: ${mLine(snTotal())}</div>`;
   }
   h += `<button class="cta" data-act="snsave"${ids.length ? '' : ' disabled'}>Eintragen</button>`;
-  if (snd.meal) {
+  {
     const mv = snd.mac || {};
     h += `<div class="panel" style="margin-top:14px"><div class="lbl2">Makros selbst eintragen (z. B. von der Packung oder aus einer App)</div>
-      <input id="mmN" class="txtin" placeholder="Was war's? (optional)" value="${esc(mv.n || '')}" autocomplete="off">
+      <input id="mmN" class="txtin" placeholder="Was war's? Stichwörter, z. B. Döner, Ayran" value="${esc(mv.n || '')}" autocomplete="off" enterkeyhint="next">
+      <p class="mini" id="mmHint">Mit Stichwörtern merke ich mir die Kombi samt Makros und Wochentag – nächstes Mal reicht ein Antippen.</p>
       <div class="mgrid"><label>kcal<input id="mmK" class="snq" type="number" inputmode="decimal" value="${mv.k ?? ''}" placeholder="auto"></label><label>Eiweiß g<input id="mmP" class="snq" type="number" inputmode="decimal" value="${mv.p ?? ''}"></label><label>KH g<input id="mmC" class="snq" type="number" inputmode="decimal" value="${mv.c ?? ''}"></label><label>Fett g<input id="mmF" class="snq" type="number" inputmode="decimal" value="${mv.f ?? ''}"></label></div>
       <p class="mini">kcal leer lassen = wird aus Eiweiß, KH und Fett berechnet.</p>
       <button class="ghost" data-act="snmacro" style="width:100%">Mit diesen Makros eintragen</button></div>`;
@@ -641,6 +702,14 @@ function snackSheet() {
     <button class="ghost" data-act="snsaveother"${snd.kcal ? '' : ' disabled'} style="width:100%">Grob eintragen</button></div>`;
   return h;
 }
+// Bekannte Stichwörter: Makros automatisch einsetzen
+document.addEventListener('input', e => {
+  if (!e.target || e.target.id !== 'mmN') return;
+  const c = gew().c[gewKey(e.target.value)], hint = document.getElementById('mmHint');
+  if (!c) { if (hint) hint.textContent = 'Mit Stichwörtern merke ich mir die Kombi samt Makros und Wochentag – nächstes Mal reicht ein Antippen.'; return; }
+  [['mmK', 0], ['mmP', 1], ['mmC', 2], ['mmF', 3]].forEach(([id, i]) => { const el = document.getElementById(id); if (el) el.value = c.m[i]; });
+  if (hint) hint.textContent = `Kenne ich schon (${c.hist.length}× eingetragen) – Makros eingesetzt. Du kannst sie noch anpassen.`;
+});
 // Mengen-Eingabe live übernehmen, ohne das Feld neu zu zeichnen
 document.addEventListener('input', e => {
   const el = e.target.closest && e.target.closest('#sheet .snq[data-id]');
@@ -789,7 +858,7 @@ function render() {
   } else if (now >= SLEEP - 45) {
     h += `<div class="panel now"><div class="now-l">Gleich Schlafenszeit</div><div class="now-t">Nichts mehr essen</div><p class="mini">Weniger als 45 min bis ${hm(SLEEP)}. Nur noch Magnesium.</p></div>`;
   } else {
-    const m = sumItems(cur.items);
+    const m = cur.m || sumItems(cur.items);
     const nxt = main ? (now < main.start ? `noch ${dur(main.start - now)} bis zum Training` : now < main.end ? 'Training läuft' : `Training vor ${dur(now - main.end)} beendet`) : '';
     const toSleep = `${dur(Math.max(0, SLEEP - Math.max(now, cur.t)))} bis zum Schlafen`;
     const when = cur.t <= now + 10 ? 'Jetzt' : `Um ${hm(cur.t)} · in ${dur(cur.t - now)}`;
@@ -799,20 +868,21 @@ function render() {
     if (cur.noFat) why.push('Nach der späten Halle fettarm.');
     if (cur.capped) why.push('Portion begrenzt, weil es schon spät ist.');
     if (cur.items.some(i => i.fill)) why.push('Auffüller sind drin, damit deine Makros heute voll werden.');
-    const opts = optionsFor(cur, st.choice);
+    const opts = cur.habit ? [] : optionsFor(cur, st.choice);
+    if (cur.habit) why.length = 0;
     const cs = sp.filter(s => s.meal === cur.id);
     h += `<div class="panel now">
       <div class="now-l">${when}</div>
       <div class="now-t">${esc(cur.name)}</div>
       <div class="now-c">${[nxt, toSleep].filter(Boolean).join(' · ')}</div>
       ${opts.map(o => `<div class="lbl2">${o.label}</div><div class="chips">${o.opts.map(([v, t]) => `<button class="chip${o.val === v ? ' on' : ''}" data-act="ch" data-k="${o.key}" data-v="${v}">${t}</button>`).join('')}</div>`).join('')}
-      ${itemsHtml(cur.items)}
+      ${cur.habit ? `<div class="habit"><b>${esc(cur.habit.n)}</b><small>Wie ${cur.habit.n0 > 1 ? `die letzten ${cur.habit.n0} ${WD[new Date().getDay()]}e` : `letzten ${WD[new Date().getDay()]}`} um ${hm(cur.habit.lastT)}</small></div>` : itemsHtml(cur.items)}
       <div class="macro">${Math.round(m[0])} kcal · ${Math.round(m[2])} g KH · ${Math.round(m[1])} g P · ${Math.round(m[3])} g F</div>
       ${cs.length ? `<div class="lbl2">Dazu nehmen</div>${cs.map(s => suppRow(s, st)).join('')}` : ''}
       ${why.length ? `<p class="mini why">${why.join(' ')}</p>` : ''}
       <button class="cta" data-act="log" data-id="${cur.id}" data-st="eaten">Gegessen</button>
       <div class="row2"><button class="ghost" data-act="log" data-id="${cur.id}" data-st="half">Nur die Hälfte</button><button class="ghost" data-act="log" data-id="${cur.id}" data-st="skip">Fällt aus</button></div>
-      <button class="ghost" data-act="alt" data-id="${cur.id}" style="width:100%;margin-top:8px">Hab ich nicht da – Alternative berechnen</button>
+      ${cur.habit ? `<button class="ghost" data-act="habno" data-id="${cur.id}" style="width:100%;margin-top:8px">Heute nicht – Plan-Mahlzeit zeigen</button>` : `<button class="ghost" data-act="alt" data-id="${cur.id}" style="width:100%;margin-top:8px">Hab ich nicht da – Alternative berechnen</button>`}
       <button class="undo" data-act="other" data-id="${cur.id}" style="display:block;margin:10px auto 0">Etwas anderes gegessen</button>
     </div>`;
   }
@@ -823,8 +893,8 @@ function render() {
   // Restlicher Tag
   if (p.rem.length > 1) {
     h += `<div class="panel"><h3>Danach</h3>${p.rem.slice(1).map(x => {
-      const m = sumItems(x.items);
-      return `<div class="tl"><div class="tl-t">${hm(x.t)}</div><div class="tl-b"><b>${esc(x.name)}</b><span>${x.items.filter(i => !FOOD[i.f].free).map(label).join(', ')}</span><small>${Math.round(m[0])} kcal</small></div><button class="undo" data-act="log" data-id="${x.id}" data-st="eaten">✓ gegessen</button></div>`;
+      const m = x.m || sumItems(x.items);
+      return `<div class="tl"><div class="tl-t">${hm(x.t)}</div><div class="tl-b"><b>${esc(x.name)}</b><span>${x.habit ? esc(x.habit.n) + ' (wie sonst ' + WD[new Date().getDay()].slice(0, 2) + ')' : x.items.filter(i => !FOOD[i.f].free).map(label).join(', ')}</span><small>${Math.round(m[0])} kcal</small></div><button class="undo" data-act="log" data-id="${x.id}" data-st="eaten">✓ gegessen</button></div>`;
     }).join('')}</div>`;
   }
 
@@ -837,7 +907,7 @@ function render() {
   if (logged.length || ex.length) {
     const lab = { eaten: 'gegessen', half: 'halbe Portion', skip: 'ausgefallen' };
     h += `<div class="panel"><h3>Eingetragen</h3>${logged.map(x => `<div class="tl"><div class="tl-t">${hm(st.log[x.id].at)}</div><div class="tl-b"><b>${esc(x.name)}</b><span>${lab[st.log[x.id].st]}</span></div><button class="undo" data-act="undo" data-id="${x.id}">Rückgängig</button></div>`).join('')}
-      ${ex.map((x, i) => `<div class="tl"><div class="tl-t">${hm(x.at)}</div><div class="tl-b"><b>${esc(x.txt || 'Snack')}</b><span>extra · ${x.kind === 'list' ? mLine(x.m) : '~' + x.kcal + ' kcal · ' + (SN_KIND[x.kind] ? SN_KIND[x.kind][0] : '')}</span></div><button class="undo" data-act="snundo" data-i="${i}">Rückgängig</button></div>`).join('')}</div>`;
+      ${ex.map((x, i) => `<div class="tl"><div class="tl-t">${hm(x.at)}</div><div class="tl-b"><b>${esc(x.txt || 'Snack')}</b><span>extra · ${x.kind === 'list' || x.kind === 'macro' ? mLine(x.m) : '~' + x.kcal + ' kcal · ' + (SN_KIND[x.kind] ? SN_KIND[x.kind][0] : '')}</span></div><button class="undo" data-act="snundo" data-i="${i}">Rückgängig</button></div>`).join('')}</div>`;
   }
   return h;
 }
@@ -857,14 +927,23 @@ function click(e) {
     const gv = id => { const v = document.getElementById(id).value; return v === '' ? undefined : parseFloat(String(v).replace(',', '.')); };
     snd.mac = { n: document.getElementById('mmN').value, k: gv('mmK'), p: gv('mmP'), c: gv('mmC'), f: gv('mmF') };
   }
-  if (act === 'snmacro') {
-    const mv = snd.mac || {}, P = mv.p, C = mv.c, F = mv.f;
-    if ([P, C, F].some(v => v === undefined || isNaN(v) || v < 0)) { Shell.toast('Eiweiß, KH und Fett eintragen'); return true; }
-    const K = mv.k !== undefined && !isNaN(mv.k) ? mv.k : Math.round(P * 4 + C * 4 + F * 9);
-    const m = [K, P, C, F], txt = (mv.n || '').trim().slice(0, 80);
-    st.log[snd.meal] = { st: 'eaten', at: now, m, items: [], custom: { kind: 'macro', txt, kcal: Math.round(K), m } };
-    store(st); snd = null; Shell.closeSheet(); Shell.toast('Mahlzeit eingetragen'); Shell.buzz(); Shell.refresh(); return true;
+  if (act === 'snmacro' || act === 'gewpick') {
+    let m, txt;
+    if (act === 'gewpick') { const c = gew().c[b.dataset.k]; if (!c) return true; m = c.m.slice(); txt = c.n; }
+    else {
+      const mv = snd.mac || {}, P = mv.p, C = mv.c, F = mv.f;
+      if ([P, C, F].some(v => v === undefined || isNaN(v) || v < 0)) { Shell.toast('Eiweiß, KH und Fett eintragen'); return true; }
+      const K = mv.k !== undefined && !isNaN(mv.k) ? mv.k : Math.round(P * 4 + C * 4 + F * 9);
+      m = [K, P, C, F]; txt = (mv.n || '').trim().slice(0, 80);
+    }
+    const entry = { kind: 'macro', at: now, txt, kcal: Math.round(m[0]), m };
+    if (snd.meal) st.log[snd.meal] = { st: 'eaten', at: now, m, items: [], custom: entry };
+    else { st.extra = st.extra || []; st.extra.push(entry); }
+    if (txt) gewLearn(txt, m, now, snd.meal);
+    const wasMeal = !!snd.meal;
+    store(st); snd = null; Shell.closeSheet(); Shell.toast((wasMeal ? 'Mahlzeit' : 'Snack') + ' eingetragen' + (txt ? ' · gemerkt' : '')); Shell.buzz(); Shell.refresh(); return true;
   }
+  if (act === 'habno') { st.choice['nohab-' + b.dataset.id] = '1'; store(st); Shell.buzz(); Shell.refresh(); return true; }
   if (act && act.startsWith('alt')) {
     const qi = document.getElementById('altQ'); if (altd && qi) altd.q = qi.value;
     if (act === 'alt') {
@@ -888,6 +967,7 @@ function click(e) {
       if (!items.length) return true;
       const m = altSum();
       st.log[altd.meal] = { st: 'eaten', at: now, m, items: [], custom: { kind: 'alt', items, txt: items.map(x => `${x.g} g ${x.n}`).join(', '), kcal: Math.round(m[0]), m } };
+      gewLearn(st.log[altd.meal].custom.txt, m, now, altd.meal);
       store(st); altd = null; Shell.closeSheet(); Shell.toast('Eingetragen'); Shell.buzz(); Shell.refresh(); return true;
     }
     Shell.sheet(altSheet()); Shell.buzz(); return true;
@@ -904,6 +984,7 @@ function click(e) {
     if (!items.length) return true;
     const m = items.reduce((a, x) => add(a, snM(SN[x.id], x.q), 1), [0, 0, 0, 0]);
     const entry = { at: now, kind: 'list', items, txt: items.map(x => `${snQty(SN[x.id], x.q)} ${SN[x.id].n}`).join(', '), kcal: Math.round(m[0]), m };
+    gewLearn(entry.txt, m, now, snd.meal);
     if (snd.meal) st.log[snd.meal] = { st: 'eaten', at: now, m, items: [], custom: entry };
     else { st.extra = st.extra || []; st.extra.push(entry); }
     const wasMeal = !!snd.meal;
@@ -916,7 +997,7 @@ function click(e) {
     else { st.extra = st.extra || []; st.extra.push(entry); }
     store(st); snd = null; Shell.closeSheet(); Shell.toast('Notiert – kommt auf die Liste'); Shell.buzz(); Shell.refresh(); return true;
   }
-  if (act === 'snundo') { (st.extra || []).splice(+b.dataset.i, 1); store(st); Shell.buzz(); Shell.refresh(); return true; }
+  if (act === 'snundo') { const x = (st.extra || [])[+b.dataset.i]; if (x && x.txt && (x.kind === 'list' || x.kind === 'macro')) gewForget(x.txt, x.at, 'extra'); (st.extra || []).splice(+b.dataset.i, 1); store(st); Shell.buzz(); Shell.refresh(); return true; }
   if (act === 'tt') { draft.type = b.dataset.v; draft.dur = TT_DUR[draft.type]; if (draft.type !== 'badminton') draft.rad = false; draft.start = FLEX.includes(draft.type) ? 'flex' : (draft.start === 'flex' ? null : draft.start); }
   else if (act === 'td') draft.dur = +b.dataset.v;
   else if (act === 'trad') draft.rad = b.dataset.v === '1';
@@ -950,13 +1031,17 @@ function click(e) {
     const p = plan(st, now);
     const slot = (p.rem || []).find(x => x.id === b.dataset.id);
     const items = slot ? slot.items : [];
-    st.log[b.dataset.id] = { st: b.dataset.st, at: now, items, m: sumItems(items) };
+    if (slot && slot.habit) {
+      const hb = slot.habit, entry = { kind: 'macro', at: now, txt: hb.n, kcal: Math.round(hb.m[0]), m: hb.m.slice() };
+      st.log[b.dataset.id] = { st: b.dataset.st, at: now, items: [], m: hb.m.slice(), custom: entry };
+      if (b.dataset.st !== 'skip') gewLearn(hb.n, hb.m, now, b.dataset.id);
+    } else st.log[b.dataset.id] = { st: b.dataset.st, at: now, items, m: sumItems(items) };
     // Supps zur Mahlzeit automatisch abhaken
     if (b.dataset.st !== 'skip') supps(p, st).filter(s => s.meal === b.dataset.id).forEach(s => { st.supps[s.id] = st.supps[s.id] || now; });
     store(st);
     Shell.toast(b.dataset.st === 'skip' ? 'Ausgelassen, Rest wird angepasst' : 'Eingetragen');
   }
-  else if (act === 'undo') { delete st.log[b.dataset.id]; store(st); }
+  else if (act === 'undo') { const l = st.log[b.dataset.id]; if (l && l.custom && l.custom.txt) gewForget(l.custom.txt, l.at, b.dataset.id); delete st.log[b.dataset.id]; store(st); }
   else if (act === 'supp') { if (st.supps[b.dataset.id]) delete st.supps[b.dataset.id]; else st.supps[b.dataset.id] = now; store(st); }
   else return false;
   Shell.buzz(); Shell.refresh();
