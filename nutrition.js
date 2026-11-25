@@ -109,6 +109,15 @@ fetch('schedule.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).
 
 // Wochenplan (Teil A) gilt im Zeitraum from–until, Einzeltermine (Teil B / Google) ergänzen
 const inPlan = k => SCHEDULE.week && (!SCHEDULE.from || k >= SCHEDULE.from) && (!SCHEDULE.until || k <= SCHEDULE.until);
+// Feste Essenszeiten aus dem Wochenplan (z. B. Porridge dienstags 12:00 in der Arbeitspause)
+function fixedMeals() {
+  const k = dkey(new Date());
+  if (((SCHEDULE.days || {})[k] || []).length) return {};
+  const wk = inPlan(k) && SCHEDULE.week[new Date().getDay()];
+  const m = (wk && wk.meals) || {}, out = {};
+  Object.keys(m).forEach(id => { out[id] = toMin(m[id]); });
+  return out;
+}
 // Blöcke, in denen Tom unterwegs ist und nicht essen kann (Arbeit, Uni, inkl. Fahrzeit)
 function busyToday() {
   const k = dkey(new Date()), out = [];
@@ -193,7 +202,9 @@ function buildDay(st, now) {
   if (morning) frT = morning.end + 15;
   const b0 = busy.find(b => frT >= b.start && frT < b.end);
   if (b0 && b0.start - 15 >= 360) frT = b0.start - 15;
-  slots.push({ id: 'fr', name: 'Frühstück', t: frT, kind: 'fr' });
+  const fixed = fixedMeals();
+  if (fixed.fr != null) frT = fixed.fr;
+  slots.push({ id: 'fr', name: 'Frühstück', t: frT, kind: 'fr', fixed: fixed.fr != null });
   const rad = sess.find(x => x.type === 'fahrrad');
   if (rad) slots.push({ id: 'rad', name: 'Nach dem Radfahren', t: rad.end + 15, kind: 'rad' });
 
@@ -226,7 +237,7 @@ function buildDay(st, now) {
   // ---- Feste Regeln: Reihenfolge Porridge → warme Mahlzeit (Mittagessen) → Abendessen zum Auffüllen ----
   // Vorgeschlagen wird immer die nächste noch offene Mahlzeit, egal wie spät es ist. Die Uhrzeit verschiebt nur.
   // 1) Porridge offen → er ist jetzt dran, alles andere rückt nach hinten
-  if (!done('fr')) fr.t = Math.min(fr.t0, now);
+  if (!done('fr')) fr.t = fr.fixed && now < fr.t0 ? fr.t0 : Math.min(fr.t0, now);
   const frEnd = done('fr') ? eatenAt('fr') : Math.max(fr.t, now);
   if (!done('mi') && !mi.after) mi.t = Math.max(mi.t0, frEnd + 150);
   if (!done('mi') && !mi.after) { const f = free(mi.t); if (f !== mi.t) { mi.t = f; mi.busyShift = true; } }

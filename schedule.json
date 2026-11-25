@@ -1,54 +1,184 @@
 {
   "v": 2,
-  "updated": "2026-11-25T14:00:00+01:00",
+  "updated": "2026-11-25T14:45:00+01:00",
   "source": "Wochenplan WiSe 2026/27 – Teil A (Apple, fest) + Teil B (Einzeltermine) + Google Kalender",
   "travel": 30,
   "from": "2026-11-16",
   "until": "2027-02-05",
   "week": {
-    "0": { "sess": [], "busy": [] },
+    "0": {
+      "sess": [],
+      "busy": []
+    },
     "1": {
       "sess": [
-        { "type": "laufen", "title": "Laufen", "start": "07:30", "end": "08:30" },
-        { "type": "badminton", "title": "Training (Mülheim)", "start": "19:30", "end": "21:30", "travel": 30 }
+        {
+          "type": "laufen",
+          "title": "Laufen",
+          "start": "07:30",
+          "end": "08:30"
+        },
+        {
+          "type": "badminton",
+          "title": "Training (Mülheim)",
+          "start": "19:30",
+          "end": "21:30",
+          "travel": 30
+        }
       ],
-      "busy": [ { "title": "Arbeit (Essen)", "start": "11:30", "end": "15:00" } ]
+      "busy": [
+        {
+          "title": "Arbeit (Essen)",
+          "start": "11:30",
+          "end": "15:00"
+        }
+      ]
     },
     "2": {
-      "sess": [ { "type": "gymOber", "title": "Gym – Oberkörper 1", "start": "20:00", "end": "22:00" } ],
-      "busy": [ { "title": "Arbeit (Essen) + Thermo-Übung (Duisburg)", "start": "07:30", "end": "18:30" } ]
+      "sess": [
+        {
+          "type": "gymOber",
+          "title": "Gym – Oberkörper 1",
+          "start": "20:00",
+          "end": "22:00"
+        }
+      ],
+      "busy": [
+        {
+          "title": "Arbeit (Essen, Pause 12:00 mit Porridge) + Thermo-Übung (Duisburg)",
+          "start": "07:30",
+          "end": "18:30"
+        }
+      ],
+      "meals": {
+        "fr": "12:00"
+      }
     },
     "3": {
-      "sess": [ { "type": "badminton", "title": "Training (Mülheim)", "start": "20:00", "end": "22:00", "travel": 30 } ],
-      "busy": [ { "title": "Arbeit (Essen)", "start": "10:30", "end": "17:30" } ]
+      "sess": [
+        {
+          "type": "badminton",
+          "title": "Training (Mülheim)",
+          "start": "20:00",
+          "end": "22:00",
+          "travel": 30
+        }
+      ],
+      "busy": [
+        {
+          "title": "Arbeit (Essen)",
+          "start": "10:30",
+          "end": "17:30"
+        }
+      ]
     },
     "4": {
       "sess": [
-        { "type": "laufen", "title": "Laufen", "start": "07:30", "end": "08:30" },
-        { "type": "gymBeine", "title": "Gym – Beine", "start": "20:00", "end": "22:00" }
+        {
+          "type": "laufen",
+          "title": "Laufen",
+          "start": "07:30",
+          "end": "08:30"
+        },
+        {
+          "type": "gymBeine",
+          "title": "Gym – Beine",
+          "start": "20:00",
+          "end": "22:00"
+        }
       ],
-      "busy": [ { "title": "Uni (DuA + Strömungsmechanik, Duisburg)", "start": "10:00", "end": "14:30" } ]
+      "busy": [
+        {
+          "title": "Uni (DuA + Strömungsmechanik, Duisburg)",
+          "start": "10:00",
+          "end": "14:30"
+        }
+      ]
     },
     "5": {
-      "sess": [ { "type": "badminton", "title": "Training (Mülheim)", "start": "18:00", "end": "20:00", "travel": 30 } ],
-      "busy": [ { "title": "Uni (DuA, Duisburg)", "start": "08:00", "end": "10:30" } ]
+      "sess": [
+        {
+          "type": "badminton",
+          "title": "Training (Mülheim)",
+          "start": "18:00",
+          "end": "20:00",
+          "travel": 30
+        }
+      ],
+      "busy": [
+        {
+          "title": "Uni (DuA, Duisburg)",
+          "start": "08:00",
+          "end": "10:30"
+        }
+      ]
     },
     "6": {
       "sess": [
-        { "type": "gymOber", "title": "Gym", "start": "10:45", "end": "12:15" },
-        { "type": "laufen", "title": "Laufen", "start": "13:45", "end": "16:00" }
+        {
+          "type": "gymOber",
+          "title": "Gym",
+          "start": "10:45",
+          "end": "12:15"
+        },
+        {
+          "type": "laufen",
+          "title": "Laufen",
+          "start": "13:45",
+          "end": "16:00"
+        }
       ],
       "busy": []
     }
   },
   "days": {
-    "2026-11-28": [ { "type": "turnier", "title": "Badminton BM Nord 1 – Herrendoppel (Gladbeck)", "start": "14:00", "end": "20:00", "travel": 30 } ],
-    "2026-11-29": [ { "type": "turnier", "title": "Badminton BM Nord 1 – Herreneinzel (Gladbeck)", "start": "09:30", "end": "17:00", "travel": 30 } ]
+    "2026-11-28": [
+      {
+        "type": "turnier",
+        "title": "Badminton BM Nord 1 – Herrendoppel (Gladbeck)",
+        "start": "14:00",
+        "end": "20:00",
+        "travel": 30
+      }
+    ],
+    "2026-11-29": [
+      {
+        "type": "turnier",
+        "title": "Badminton BM Nord 1 – Herreneinzel (Gladbeck)",
+        "start": "09:30",
+        "end": "17:00",
+        "travel": 30
+      }
+    ]
   },
   "busy": {
-    "2026-11-30": [ { "title": "GMA-Antestat (Duisburg)", "start": "10:30", "end": "12:30" } ],
-    "2026-12-04": [ { "title": "Thermo-Praktikum Wärmeübertrager", "start": "09:30", "end": "12:30" } ],
-    "2026-12-10": [ { "title": "Thermo-Praktikum Wasser", "start": "10:00", "end": "14:30" } ],
-    "2026-12-11": [ { "title": "Thermo-Praktikum Wärmepumpe", "start": "10:00", "end": "13:00" } ]
+    "2026-11-30": [
+      {
+        "title": "GMA-Antestat (Duisburg)",
+        "start": "10:30",
+        "end": "12:30"
+      }
+    ],
+    "2026-12-04": [
+      {
+        "title": "Thermo-Praktikum Wärmeübertrager",
+        "start": "09:30",
+        "end": "12:30"
+      }
+    ],
+    "2026-12-10": [
+      {
+        "title": "Thermo-Praktikum Wasser",
+        "start": "10:00",
+        "end": "14:30"
+      }
+    ],
+    "2026-12-11": [
+      {
+        "title": "Thermo-Praktikum Wärmepumpe",
+        "start": "10:00",
+        "end": "13:00"
+      }
+    ]
   }
 }
