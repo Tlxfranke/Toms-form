@@ -813,6 +813,65 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'altQ') { e.preventDefault(); altd.q = e.target.value; altSearch(); } });
 
+
+// ---------- Einkaufsliste: Basis-Meals aus dem Master-Plan für 4 Tage ----------
+// Annahme: 4× Porridge, 4× Mittagessen (2× Reis, 2× Nudeln · 2× Hähnchen, 1× Hack, 1× Lachs),
+// 2× Badminton-Tag (Pre-Workout + fettarmes Abendessen), 2× Gym-Tag (Banane/Honig + Eier-Abendessen)
+const SHOP = [
+  ['Obst & Gemüse', [
+    ['apfel', 'Äpfel', '4 Stück (Porridge)'],
+    ['kiwi', 'Kiwis', '4 Stück (Porridge)'],
+    ['beeren', 'Beeren (TK geht)', '600 g (Porridge)'],
+    ['banane', 'Bananen', '4 Stück (Pre-Workout / ums Training)'],
+    ['brokkoli', 'Brokkoli', '400 g (Mittagessen)'],
+    ['paprika', 'Paprika', '3 Stück ≈ 400 g (Mittagessen)'],
+    ['zucchini', 'Zucchini', '2 Stück ≈ 400 g (Mittagessen)'],
+    ['tomaten', 'Tomaten / Rohkost', '200 g (Eier-Abendessen)']
+  ]],
+  ['Kühlregal', [
+    ['skyr', 'Skyr', '800 g (4 × 200 g Porridge)'],
+    ['quark', 'Magerquark', '250 g (Abendessen nach der Halle)'],
+    ['frischkaese', 'Körniger Frischkäse', '200 g (Abendessen nach der Halle, Variante)'],
+    ['eier', 'Eier', '8 Stück (2 × Rührei/Omelett)']
+  ]],
+  ['Fleisch & Fisch', [
+    ['haehnchen', 'Hähnchenbrust', '400 g (2 × Mittagessen)'],
+    ['hack', 'Rinderhack 5 % Fett', '200 g (1 × Mittagessen)'],
+    ['lachs', 'Lachs', '200 g (1 × Mittagessen, ohne Öl)']
+  ]],
+  ['Brot & Beilagen', [
+    ['hafer', 'Haferflocken', '480 g → 500-g-Packung'],
+    ['reis', 'Basmatireis', '340 g (2 × 170 g)'],
+    ['nudeln', 'Nudeln', '340 g (2 × 170 g)'],
+    ['maiswaffeln', 'Maiswaffeln', '10 Stück (2 × Pre-Workout)'],
+    ['toast', 'Toast / Mehrkornbrot', '6 Scheiben (Abendessen nach der Halle)'],
+    ['vollkornbrot', 'Vollkornbrot', '6 Scheiben (Eier-Abendessen)']
+  ]],
+  ['Vorrat – nur prüfen', [
+    ['whey', 'Whey Protein', '120 g (4 × 30 g)'],
+    ['schoko', 'Bitterschokolade 70 %', '80 g → 1 Tafel'],
+    ['honig', 'Honig', '≈ 70 g'],
+    ['oel', 'Olivenöl', '≈ 15 g'],
+    ['zimt', 'Zimt', ''],
+    ['salz', 'Jodsalz', 'auch für Elektrolyte in der Trainingsflasche']
+  ]]
+];
+const shopState = () => load('tf-shop', { done: {} });
+function shopSheet() {
+  const sh = shopState();
+  const all = SHOP.flatMap(g => g[1]), n = all.filter(x => sh.done[x[0]]).length;
+  let h = `<h2>Einkaufsliste</h2><p class="mini">Basis-Meals für 4 Tage · ${n} von ${all.length} erledigt</p>`;
+  SHOP.forEach(([grp, items]) => {
+    h += `<p class="shop-h">${esc(grp)}</p>`;
+    items.forEach(([id, name, amt]) => {
+      const d = !!sh.done[id];
+      h += `<button class="shop-i${d ? ' on' : ''}" data-act="shopTog" data-id="${id}"><i>${d ? '✓' : ''}</i><span>${esc(name)}${amt ? `<small>${esc(amt)}</small>` : ''}</span></button>`;
+    });
+  });
+  h += `<button class="ghost" style="width:100%;margin-top:16px" data-act="shopReset">Alle Haken entfernen</button>`;
+  return h;
+}
+
 function render() {
   const st = dayState(), now = nowMin();
   const p = plan(st, now);
@@ -824,6 +883,7 @@ function render() {
   // Kontextzeile
   const ctxTxt = !sess.length ? 'Kein Training heute' :
     sess.map(x => x.flex ? `${TT[x.type]} · flexibel, ideal ab ${hm(x.start)}` : `${TT[x.type]} ${hm(x.start)}–${hm(x.end)}`).join(' · ');
+  h += `<button class="shop-btn" data-act="shop">🛒 Einkaufsliste</button>`;
   h += `<button class="daychip" data-act="tedit"><span>${esc(tpl.name)}</span><small>${esc(ctxTxt)}${sess.some(x => x.src === 'cal') ? ' · aus Kalender' : ''}</small><b>ändern</b></button>`;
   if (p.busy && p.busy.length) h += `<p class="mini">Unterwegs (inkl. Fahrt): ${p.busy.map(b => esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.end)).join(' · ')}</p>`;
   if (tpl.note) h += `<p class="mini">${tpl.note}</p>`;
@@ -922,6 +982,9 @@ function click(e) {
   const b = e.target.closest('[data-act]');
   if (!b) return false;
   const st = dayState(), act = b.dataset.act, now = nowMin();
+  if (act === 'shop') { Shell.sheet(shopSheet()); return true; }
+  if (act === 'shopTog') { const sh = shopState(); sh.done[b.dataset.id] = !sh.done[b.dataset.id]; save('tf-shop', sh); Shell.sheet(shopSheet()); Shell.buzz && Shell.buzz(); return true; }
+  if (act === 'shopReset') { save('tf-shop', { done: {} }); Shell.sheet(shopSheet()); return true; }
   const ti = document.getElementById('snTxt'); if (snd && ti) snd.txt = ti.value;
   if (snd && document.getElementById('mmP')) {
     const gv = id => { const v = document.getElementById(id).value; return v === '' ? undefined : parseFloat(String(v).replace(',', '.')); };
