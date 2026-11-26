@@ -1,6 +1,6 @@
 {
   "v": 2,
-  "updated": "2026-11-25T14:45:00+01:00",
+  "updated": "2026-11-26T08:18:40+01:00",
   "source": "Wochenplan WiSe 2026/27 – Teil A (Apple, fest) + Teil B (Einzeltermine) + Google Kalender",
   "travel": 30,
   "from": "2026-11-16",
@@ -157,6 +157,11 @@
         "title": "GMA-Antestat (Duisburg)",
         "start": "10:30",
         "end": "12:30"
+      },
+      {
+        "title": "Arbeit: Treffen mit Alina (Essen)",
+        "start": "13:30",
+        "end": "15:30"
       }
     ],
     "2026-12-04": [
@@ -178,6 +183,20 @@
         "title": "Thermo-Praktikum Wärmepumpe",
         "start": "10:00",
         "end": "13:00"
+      }
+    ],
+    "2027-01-07": [
+      {
+        "title": "KoMa: Vorstellung Präsentation, Pflicht (Tectrum)",
+        "start": "13:30",
+        "end": "16:00"
+      }
+    ],
+    "2027-01-28": [
+      {
+        "title": "KoMa: Probeklausur, Pflicht (Tectrum)",
+        "start": "13:30",
+        "end": "16:00"
       }
     ]
   }
