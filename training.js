@@ -530,9 +530,10 @@ function renderData() {
     <p class="mini">${anyG ? 'HRV je Nacht in ms – höher heißt meist besser erholt' : 'HRV und Ruhepuls – kommt von der Apple Watch.'}</p></div>`;
 
   // Training (Gurt)
-  const hrS = days7.flatMap(d => ((r.days[d] || {}).sess || []).filter(s => s.hr).map(s => ({ ...s, d })));
-  h += `<div class="panel"><h3>Training · Brustgurt</h3>${hrS.length ? hrS.map(s => `<div class="tl"><div class="tl-t">${wd(s.d)}</div><div class="tl-b">${TYPES[s.type] || s.type}<small>Ø ${s.hr.avg} / max ${s.hr.max} bpm · Zone 4–5: ${s.hr.z45} min · ${s.hr.kcal} kcal</small></div></div>`).join('')
-    : '<p class="mini">Pro Einheit: Ø- und Maximalpuls, Zeit in den Pulszonen, kcal und Puls-Erholung – kommt vom Polar H10.</p>'}</div>`;
+  // Einheiten von der Uhr; Sportart aus den eingetragenen Einheiten des Tages (in Reihenfolge) übernehmen
+  const woS = days7.slice().reverse().flatMap(d => { const day = r.days[d] || {}, ss = (day.sess || []).slice().sort((p, q) => (p.start ?? p.at) - (q.start ?? q.at)); return (day.wo || []).map((w, i) => ({ ...w, type: ss[i] ? ss[i].type : null })); });
+  h += `<div class="panel"><h3>Training · Puls</h3>${woS.length ? woS.map(w => `<div class="tl"><div class="tl-t">${wd(w.d)}</div><div class="tl-b">${w.type ? (TYPES[w.type] || w.type) : 'Training'} · ${w.from}–${w.to}<small>${w.min} min · Ø ${w.avg} / max ${w.max} bpm · Zone 4–5: ${w.z45} min · ${w.kcal} kcal</small></div></div>`).join('')
+    : '<p class="mini">Pro Einheit: Dauer, Ø- und Maximalpuls, Minuten in Zone 4–5 und kcal – kommt direkt nach dem Training von der Apple Watch.</p>'}</div>`;
 
   // Verbrauch
   h += `<div class="panel"><h3>Verbrauch</h3>

@@ -167,6 +167,17 @@ async function watchPull() {
       const cur = rec.days[d] || {};
       if (!cur.watch || cur.watch.at !== v.at) { rec.days[d] = { ...cur, watch: v }; changed = true; }
     });
+    // Trainings (Puls/kcal je Einheit)
+    try {
+      const r2 = await fetch((cfg().url || URL_DEFAULT).replace(/\/$/, '') + '/workout', { headers: { 'Authorization': 'Bearer ' + cfg().token } });
+      const wl = r2.ok ? await r2.json() : null;
+      (wl && wl.list || []).forEach(x => {
+        const cur = rec.days[x.d] || {}, wo = cur.wo || [];
+        if (wo.some(y => y.id === x.id && y.kcal === x.kcal && y.min === x.min)) return;
+        rec.days[x.d] = { ...cur, wo: wo.filter(y => y.id !== x.id).concat([x]).sort((p, q) => p.id - q.id) };
+        changed = true;
+      });
+    } catch (e) {}
     if (changed) { localStorage.setItem('tf-rec', JSON.stringify(rec)); window.Shell && Shell.refresh(); }
   } catch (e) {}
 }
