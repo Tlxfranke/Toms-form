@@ -515,7 +515,7 @@ function renderData() {
   const k = (v, lbl) => `<div><b>${v != null ? v : '–'}</b><small>${lbl}</small></div>`;
   h += `<div class="panel"><h3>Heute auf einen Blick</h3><div class="kpis k6">
     ${k(well ? wellScore(well) + '/25' : null, 'Tagesform (Gefühl)')}${k(hh(wt.sleepMin), 'Schlaf (h)')}${k(wt.deep != null ? hh(wt.deep + wt.rem) : null, 'Tief + REM')}
-    ${k(wt.hrv != null ? wt.hrv + ' ms' : null, 'HRV nachts')}${k(wt.rhr, 'Ruhepuls')}${k(wt.kcal, 'Verbrauch 24 h')}
+    ${k(wt.hrv != null ? wt.hrv + ' ms' : null, 'HRV nachts')}${k(wt.rhr, 'Ruhepuls')}${k(wt.kcal, 'Verbrauch gestern')}
     ${k(wt.bed ? wt.bed + '–' + wt.wake : null, 'Geschlafen')}${k(loadOf(r, t) || null, 'Belastung heute')}${k(l7 || null, 'Belastung 7 Tage')}</div>
     ${wt.at ? '' : '<p class="mini">Schlaf, HRV, Ruhepuls und Verbrauch kommen jeden Morgen per Kurzbefehl von der Apple Watch.</p>'}</div>`;
 
